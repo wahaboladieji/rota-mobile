@@ -1,0 +1,26 @@
+{
+  "name": "rota",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rota - Android-first shift scheduling app for small teams",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=@rota/shared && npm run build --workspace=@rota/backend",
+    "typecheck": "npm run typecheck --workspace=@rota/shared && npm run typecheck --workspace=@rota/backend && npm run typecheck --workspace=@rota/frontend",
+    "test": "npm run test --workspace=@rota/backend",
+    "start:backend": "npm run start --workspace=@rota/backend",
+    "start:api": "npm run start --workspace=@rota/backend",
+    "dev:backend": "npm run dev --workspace=@rota/backend",
+    "dev:api": "npm run dev --workspace=@rota/backend",
+    "start:worker": "npm run start:worker --workspace=@rota/backend",
+    "start:frontend": "npm run start --workspace=@rota/frontend",
+    "start:mobile": "npm run start --workspace=@rota/frontend",
+    "tokens:generate": "node convert-tokens.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

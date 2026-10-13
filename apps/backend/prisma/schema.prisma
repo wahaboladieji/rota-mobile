@@ -1,0 +1,358 @@
+// Rota Prisma Schema
+// Source: docs/Rota_PRD_v2.md Section 10
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+enum MembershipStatus {
+  ACTIVE
+  REMOVED
+}
+
+enum ShiftStatus {
+  PUBLISHED
+  CANCELLED
+}
+
+enum SwapStatus {
+  PENDING_COLLEAGUE
+  PENDING_MANAGER
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  PENDING_INITIAL_PAYMENT
+  ACTIVE
+  GRACE
+  RESTRICTED
+}
+
+enum PaymentStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+enum EventStatus {
+  RECEIVED
+  QUEUED
+  PROCESSED
+  FAILED
+}
+
+enum LedgerKind {
+  CHARGE
+  CREDIT
+  REFUND
+  STATE_CHANGE
+}
+
+model User {
+  id             String               @id @default(uuid()) @db.Uuid
+  email          String               @unique
+  passwordHash   String?
+  createdAt      DateTime             @default(now()) @db.Timestamptz(3)
+  ownedTeams     Team[]               @relation("TeamOwner")
+  memberships    Membership[]
+  sentInvites    Invitation[]         @relation("Inviter")
+  assignedShifts Shift[]              @relation("Assignee")
+  requestedSwaps SwapRequest[]        @relation("Requester")
+  colleagueSwaps SwapRequest[]        @relation("Colleague")
+  approvedSwaps  SwapRequest[]        @relation("Approver")
+  activity       ActivityEvent[]      @relation("Actor")
+  settings       UserSetting?
+  devices        Device[]
+  sessions       Session[]
+  magicLinks     MagicLinkToken[]
+  passwordResets PasswordResetToken[]
+  preferences    ShiftPreference[]
+}
+
+model Team {
+  id              String           @id @default(uuid()) @db.Uuid
+  name            String
+  ownerId         String           @db.Uuid
+  owner           User             @relation("TeamOwner", fields: [ownerId], references: [id])
+  memberships     Membership[]
+  invitations     Invitation[]
+  shifts          Shift[]
+  preferences     ShiftPreference[]
+  swaps           SwapRequest[]
+  activity        ActivityEvent[]
+  subscription    Subscription?
+  paymentAttempts PaymentAttempt[]
+  ledger          LedgerEntry[]
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+}
+
+model Membership {
+  id       String           @id @default(uuid()) @db.Uuid
+  teamId   String           @db.Uuid
+  userId   String           @db.Uuid
+  role     Role
+  status   MembershipStatus @default(ACTIVE)
+  joinedAt DateTime         @default(now()) @db.Timestamptz(3)
+  team     Team             @relation(fields: [teamId], references: [id])
+  user     User             @relation(fields: [userId], references: [id])
+
+  @@unique([teamId, userId])
+  @@index([userId, status])
+}
+
+model Invitation {
+  id         String    @id @default(uuid()) @db.Uuid
+  teamId     String    @db.Uuid
+  inviterId  String    @db.Uuid
+  email      String?
+  role       Role
+  tokenHash  String    @unique
+  expiresAt  DateTime  @db.Timestamptz(3)
+  acceptedAt DateTime? @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  team       Team      @relation(fields: [teamId], references: [id])
+  inviter    User      @relation("Inviter", fields: [inviterId], references: [id])
+
+  @@index([teamId, expiresAt])
+}
+
+model MagicLinkToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  user      User      @relation(fields: [userId], references: [id])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  user      User      @relation(fields: [userId], references: [id])
+}
+
+model Shift {
+  id              String          @id @default(uuid()) @db.Uuid
+  teamId          String          @db.Uuid
+  assigneeId      String          @db.Uuid
+  startAt         DateTime        @db.Timestamptz(3)
+  endAt           DateTime        @db.Timestamptz(3)
+  status          ShiftStatus     @default(PUBLISHED)
+  version         Int             @default(1)
+  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime        @updatedAt @db.Timestamptz(3)
+  team            Team            @relation(fields: [teamId], references: [id])
+  assignee        User            @relation("Assignee", fields: [assigneeId], references: [id])
+  requesterSwaps  SwapRequest[]   @relation("RequesterShift")
+  colleagueSwaps  SwapRequest[]   @relation("ColleagueShift")
+  openReservation OpenSwapShift?
+
+  @@index([teamId, startAt])
+  @@index([assigneeId, startAt])
+}
+
+model ShiftPreference {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId    String   @db.Uuid
+  userId    String   @db.Uuid
+  weekday   Int
+  startTime String
+  endTime   String
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  team      Team     @relation(fields: [teamId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([teamId, userId, weekday])
+}
+
+model SwapRequest {
+  id               String          @id @default(uuid()) @db.Uuid
+  teamId           String          @db.Uuid
+  requesterId      String          @db.Uuid
+  colleagueId      String          @db.Uuid
+  approverId       String?         @db.Uuid
+  requesterShiftId String          @db.Uuid
+  colleagueShiftId String?         @db.Uuid
+  requesterVersion Int
+  colleagueVersion Int?
+  status           SwapStatus      @default(PENDING_COLLEAGUE)
+  createdAt        DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime        @updatedAt @db.Timestamptz(3)
+  team             Team            @relation(fields: [teamId], references: [id])
+  requester        User            @relation("Requester", fields: [requesterId], references: [id])
+  colleague        User            @relation("Colleague", fields: [colleagueId], references: [id])
+  approver         User?           @relation("Approver", fields: [approverId], references: [id])
+  requesterShift   Shift           @relation("RequesterShift", fields: [requesterShiftId], references: [id])
+  colleagueShift   Shift?          @relation("ColleagueShift", fields: [colleagueShiftId], references: [id])
+  reservations     OpenSwapShift[]
+
+  @@index([teamId, status, createdAt])
+}
+
+model OpenSwapShift {
+  shiftId       String      @id @db.Uuid
+  swapRequestId String      @db.Uuid
+  shift         Shift       @relation(fields: [shiftId], references: [id])
+  swapRequest   SwapRequest @relation(fields: [swapRequestId], references: [id])
+
+  @@index([swapRequestId])
+}
+
+model ActivityEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId    String   @db.Uuid
+  actorId   String?  @db.Uuid
+  type      String
+  targetId  String?  @db.Uuid
+  payload   Json
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  team      Team     @relation(fields: [teamId], references: [id])
+  actor     User?    @relation("Actor", fields: [actorId], references: [id])
+
+  @@index([teamId, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+model UserSetting {
+  userId         String  @id @db.Uuid
+  quietStart     String?
+  quietEnd       String?
+  timeZone       String
+  shiftPush      Boolean @default(true)
+  swapPush       Boolean @default(true)
+  billingPush    Boolean @default(true)
+  language       String  @default("en")
+  theme          String  @default("system")
+  fieldUpdatedAt Json
+  user           User    @relation(fields: [userId], references: [id])
+}
+
+model Device {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  pushToken     String?   @unique
+  lastSeenAt    DateTime  @db.Timestamptz(3)
+  invalidatedAt DateTime? @db.Timestamptz(3)
+  user          User      @relation(fields: [userId], references: [id])
+  sessions      Session[]
+}
+
+model Session {
+  id            String         @id @default(uuid()) @db.Uuid
+  userId        String         @db.Uuid
+  deviceId      String?        @db.Uuid
+  revokedAt     DateTime?      @db.Timestamptz(3)
+  user          User           @relation(fields: [userId], references: [id])
+  device        Device?        @relation(fields: [deviceId], references: [id])
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  sessionId String    @db.Uuid
+  familyId  String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  session   Session   @relation(fields: [sessionId], references: [id])
+
+  @@index([familyId])
+}
+
+model Plan {
+  code           String         @id
+  basePriceCents Int
+  includedSeats  Int
+  extraSeatCents Int?
+  subscriptions  Subscription[]
+}
+
+model Subscription {
+  id                  String             @id @default(uuid()) @db.Uuid
+  teamId              String             @unique @db.Uuid
+  planCode            String
+  periodStart         DateTime           @db.Timestamptz(3)
+  periodEnd           DateTime           @db.Timestamptz(3)
+  status              SubscriptionStatus @default(PENDING_INITIAL_PAYMENT)
+  pendingPlanCode     String?
+  paidSeatEntitlement Int
+  activeMemberCount   Int                @default(0)
+  graceEndAt          DateTime?          @db.Timestamptz(3)
+  team                Team               @relation(fields: [teamId], references: [id])
+  plan                Plan               @relation(fields: [planCode], references: [code])
+  attempts            PaymentAttempt[]
+  ledger              LedgerEntry[]
+}
+
+model PaymentAttempt {
+  id                  String        @id @default(uuid()) @db.Uuid
+  teamId              String        @db.Uuid
+  subscriptionId      String        @db.Uuid
+  idempotencyKey      String        @unique
+  txRef               String        @unique
+  provider            String
+  providerTransaction String?
+  expectedAmountCents Int
+  currency            String
+  status              PaymentStatus @default(PENDING)
+  createdAt           DateTime      @default(now()) @db.Timestamptz(3)
+  team                Team          @relation(fields: [teamId], references: [id])
+  subscription        Subscription  @relation(fields: [subscriptionId], references: [id])
+  ledger              LedgerEntry[]
+}
+
+model WebhookEvent {
+  id              String      @id @default(uuid()) @db.Uuid
+  provider        String
+  providerEventId String
+  payload         Json?
+  status          EventStatus @default(RECEIVED)
+  receivedAt      DateTime    @default(now()) @db.Timestamptz(3)
+  processedAt     DateTime?   @db.Timestamptz(3)
+  failureReason   String?
+
+  @@unique([provider, providerEventId])
+  @@index([status, receivedAt])
+}
+
+model LedgerEntry {
+  id               String              @id @default(uuid()) @db.Uuid
+  teamId           String              @db.Uuid
+  subscriptionId   String              @db.Uuid
+  paymentAttemptId String?             @db.Uuid
+  kind             LedgerKind
+  eventType        String
+  amountCents      Int
+  currency         String
+  planCodeAfter    String?
+  paidSeatsAfter   Int?
+  statusAfter      SubscriptionStatus?
+  periodStartAfter DateTime?           @db.Timestamptz(3)
+  periodEndAfter   DateTime?           @db.Timestamptz(3)
+  effectiveAt      DateTime            @db.Timestamptz(3)
+  createdAt        DateTime            @default(now()) @db.Timestamptz(3)
+  correctionOfId   String?             @db.Uuid
+  team             Team                @relation(fields: [teamId], references: [id])
+  subscription     Subscription        @relation(fields: [subscriptionId], references: [id])
+  paymentAttempt   PaymentAttempt?     @relation(fields: [paymentAttemptId], references: [id])
+  correctionOf     LedgerEntry?        @relation("Correction", fields: [correctionOfId], references: [id])
+  corrections      LedgerEntry[]       @relation("Correction")
+
+  @@index([subscriptionId, createdAt, id])
+}

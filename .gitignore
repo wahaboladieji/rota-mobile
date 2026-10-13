@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Local Environment Secrets - NEVER COMMIT SECRETS
+.env
+.env.local
+.env.*.local
+*.env
+
+# Build outputs
+dist/
+build/
+.expo/
+.expo-shared/
+web-build/
+
+# Infra local data and temporary files
+infra/redis/data/
+infra/redis/redis-stable/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
