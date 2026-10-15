@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useTheme, titleLargeText, titleMediumText } from '../../theme';
 import { apiRequest } from '../../services/api';
+import { ArrowLeftIcon, ClockIcon } from '../../components/ReviewIcons';
 
 interface PaymentPendingScreenProps {
   teamId: string;
@@ -17,60 +18,6 @@ interface PaymentPendingScreenProps {
   onGoHome: () => void;
   onBack: () => void;
 }
-
-const ArrowLeftIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size * 0.7, height: 2, backgroundColor: color }} />
-    <View
-      style={{
-        position: 'absolute',
-        left: 2,
-        width: size * 0.4,
-        height: size * 0.4,
-        borderTopWidth: 2,
-        borderLeftWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '-45deg' }],
-      }}
-    />
-  </View>
-);
-
-const ClockIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 24 }) => (
-  <View
-    style={{
-      width: size,
-      height: size,
-      borderRadius: size / 2,
-      borderWidth: 2,
-      borderColor: color,
-      justifyContent: 'center',
-      alignItems: 'center',
-    }}
-  >
-    <View
-      style={{
-        position: 'absolute',
-        top: 3,
-        width: 2,
-        height: size * 0.38,
-        backgroundColor: color,
-        borderRadius: 1,
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        left: size * 0.42,
-        top: size * 0.42,
-        width: size * 0.3,
-        height: 2,
-        backgroundColor: color,
-        borderRadius: 1,
-      }}
-    />
-  </View>
-);
 
 export const PaymentPendingScreen: React.FC<PaymentPendingScreenProps> = ({
   teamId,

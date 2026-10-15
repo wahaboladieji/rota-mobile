@@ -6,6 +6,40 @@ interface RequestOptions extends RequestInit {
   requiresAuth?: boolean;
 }
 
+let activeRefreshPromise: Promise<string | null> | null = null;
+
+async function refreshAuthTokens(): Promise<string | null> {
+  const refreshToken = useAuthStore.getState().refreshToken;
+  if (!refreshToken) {
+    return null;
+  }
+
+  try {
+    const refreshRes = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (refreshRes.ok) {
+      const newTokens = (await refreshRes.json()) as { accessToken: string; refreshToken: string };
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser) {
+        await useAuthStore.getState().setAuth(currentUser, newTokens.accessToken, newTokens.refreshToken);
+      }
+      return newTokens.accessToken;
+    } else {
+      await useAuthStore.getState().logout();
+      return null;
+    }
+  } catch {
+    await useAuthStore.getState().logout();
+    return null;
+  } finally {
+    activeRefreshPromise = null;
+  }
+}
+
 export async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { requiresAuth = true, headers: customHeaders = {}, ...rest } = options;
 
@@ -14,11 +48,9 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
     ...(customHeaders as Record<string, string>),
   };
 
-  if (requiresAuth) {
-    const token = useAuthStore.getState().accessToken;
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+  const initialToken = useAuthStore.getState().accessToken;
+  if (requiresAuth && initialToken) {
+    headers['Authorization'] = `Bearer ${initialToken}`;
   }
 
   const url = `${API_BASE_URL}${endpoint}`;
@@ -30,32 +62,29 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
     throw new Error(`Unable to reach server (${API_BASE_URL}): ${errorMsg}`);
   }
 
-  // Handle 401 Unauthorized with token refresh attempt
+  // Handle 401 Unauthorized with single-flight token refresh
   if (response.status === 401 && requiresAuth) {
-    const refreshToken = useAuthStore.getState().refreshToken;
-    if (refreshToken) {
-      try {
-        const refreshRes = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
+    const currentToken = useAuthStore.getState().accessToken;
+    let newToken: string | null = null;
 
-        if (refreshRes.ok) {
-          const newTokens = (await refreshRes.json()) as { accessToken: string; refreshToken: string };
-          const currentUser = useAuthStore.getState().user;
-          if (currentUser) {
-            await useAuthStore.getState().setAuth(currentUser, newTokens.accessToken, newTokens.refreshToken);
-            // Retry original request with new access token
-            headers['Authorization'] = `Bearer ${newTokens.accessToken}`;
-            response = await fetch(url, { headers, ...rest });
-          }
-        } else {
-          // Refresh token invalid or compromised: log out
-          await useAuthStore.getState().logout();
-        }
-      } catch {
-        await useAuthStore.getState().logout();
+    // If another concurrent request already refreshed the access token while this was in flight
+    if (currentToken && currentToken !== initialToken) {
+      newToken = currentToken;
+    } else {
+      // Deduplicate refresh so only one request hits /api/auth/refresh
+      if (!activeRefreshPromise) {
+        activeRefreshPromise = refreshAuthTokens();
+      }
+      newToken = await activeRefreshPromise;
+    }
+
+    if (newToken) {
+      headers['Authorization'] = `Bearer ${newToken}`;
+      try {
+        response = await fetch(url, { headers, ...rest });
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        throw new Error(`Unable to reach server (${API_BASE_URL}): ${errorMsg}`);
       }
     }
   }
@@ -67,4 +96,18 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
   }
 
   return data as T;
+}
+
+export async function registerPushTokenApi(pushToken: string): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>('/devices/push-token', {
+    method: 'POST',
+    body: JSON.stringify({ pushToken }),
+  });
+}
+
+export async function sendTestNotificationApi(pushToken?: string): Promise<{ success: boolean; message: string }> {
+  return apiRequest<{ success: boolean; message: string }>('/notifications/test', {
+    method: 'POST',
+    body: JSON.stringify({ pushToken }),
+  });
 }

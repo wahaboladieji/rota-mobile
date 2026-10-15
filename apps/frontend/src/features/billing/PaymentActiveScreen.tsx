@@ -2,37 +2,12 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useTheme, titleLargeText } from '../../theme';
 import { PlanCode, PLANS } from '@rota/shared';
+import { CircleCheckIcon } from '../../components/ReviewIcons';
 
 interface PaymentActiveScreenProps {
   plan: PlanCode;
   onGoHome: () => void;
 }
-
-const CircleCheckIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 32 }) => (
-  <View
-    style={{
-      width: size,
-      height: size,
-      borderRadius: size / 2,
-      borderWidth: 2.2,
-      borderColor: color,
-      justifyContent: 'center',
-      alignItems: 'center',
-    }}
-  >
-    <View
-      style={{
-        width: size * 0.35,
-        height: size * 0.65,
-        borderBottomWidth: 2.5,
-        borderRightWidth: 2.5,
-        borderColor: color,
-        transform: [{ rotate: '45deg' }],
-        marginTop: -3,
-      }}
-    />
-  </View>
-);
 
 export const PaymentActiveScreen: React.FC<PaymentActiveScreenProps> = ({ plan, onGoHome }) => {
   const { colors } = useTheme();

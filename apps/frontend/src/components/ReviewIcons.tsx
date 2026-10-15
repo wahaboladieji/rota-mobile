@@ -1,390 +1,51 @@
 import React from 'react';
-import { View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-export const ArrowLeftIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size * 0.7, height: 2, backgroundColor: color }} />
-    <View
-      style={{
-        position: 'absolute',
-        left: 2,
-        width: size * 0.4,
-        height: size * 0.4,
-        borderTopWidth: 2,
-        borderLeftWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '-45deg' }],
-      }}
-    />
-  </View>
-);
+/**
+ * Material Design icon pack for Rota.
+ *
+ * All icons are sourced from MaterialCommunityIcons (the Material Design Icons
+ * set) so screens and components share one visual language instead of
+ * hand-drawn shapes. Icons are consumed through these named exports using the
+ * shared `{ color, size }` contract.
+ */
 
-export const ChevronRightIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 18 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.35,
-        height: size * 0.35,
-        borderTopWidth: 2,
-        borderRightWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '45deg' }],
-      }}
-    />
-  </View>
-);
+type IconProps = { color: string; size?: number };
+type MaterialIconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
-export const ChevronDownIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 16 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.4,
-        height: size * 0.4,
-        borderBottomWidth: 2,
-        borderRightWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '45deg' }],
-        marginTop: -size * 0.15,
-      }}
-    />
-  </View>
-);
+const createIcon =
+  (name: MaterialIconName, defaultSize = 20): React.FC<IconProps> =>
+  ({ color, size = defaultSize }) => (
+    <MaterialCommunityIcons name={name} color={color} size={size} />
+  );
 
-export const PlusIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 18 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size * 0.75, height: 2, backgroundColor: color, borderRadius: 1 }} />
-    <View style={{ position: 'absolute', width: 2, height: size * 0.75, backgroundColor: color, borderRadius: 1 }} />
-  </View>
-);
-
-export const HouseIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: 0,
-        height: 0,
-        borderLeftWidth: size * 0.4,
-        borderRightWidth: size * 0.4,
-        borderBottomWidth: size * 0.35,
-        borderLeftColor: 'transparent',
-        borderRightColor: 'transparent',
-        borderBottomColor: color,
-      }}
-    />
-    <View
-      style={{
-        width: size * 0.6,
-        height: size * 0.4,
-        borderWidth: 1.8,
-        borderTopWidth: 0,
-        borderColor: color,
-      }}
-    />
-  </View>
-);
-
-export const CalendarDaysIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.75,
-        height: size * 0.7,
-        borderWidth: 1.8,
-        borderColor: color,
-        borderRadius: 4,
-        paddingTop: 3,
-      }}
-    >
-      <View style={{ width: '100%', height: 1.5, backgroundColor: color }} />
-    </View>
-  </View>
-);
-
-export const Repeat2Icon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size * 0.7, height: 2, backgroundColor: color, marginBottom: 4 }} />
-    <View style={{ width: size * 0.7, height: 2, backgroundColor: color }} />
-  </View>
-);
-
-export const ActivityNavIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-    <View style={{ width: 2, height: size * 0.35, backgroundColor: color, borderRadius: 1 }} />
-    <View style={{ width: 2, height: size * 0.7, backgroundColor: color, borderRadius: 1 }} />
-    <View style={{ width: 2, height: size * 0.45, backgroundColor: color, borderRadius: 1 }} />
-  </View>
-);
-
-export const EllipsisIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
-    <View style={{ width: 3.5, height: 3.5, borderRadius: 2, backgroundColor: color }} />
-    <View style={{ width: 3.5, height: 3.5, borderRadius: 2, backgroundColor: color }} />
-    <View style={{ width: 3.5, height: 3.5, borderRadius: 2, backgroundColor: color }} />
-  </View>
-);
-
-export const BellIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.6,
-        height: size * 0.6,
-        borderWidth: 2,
-        borderColor: color,
-        borderTopLeftRadius: size * 0.3,
-        borderTopRightRadius: size * 0.3,
-      }}
-    />
-    <View style={{ width: size * 0.8, height: 2, backgroundColor: color, marginTop: -1 }} />
-  </View>
-);
-
-export const SunMoonIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.6,
-        height: size * 0.6,
-        borderRadius: size * 0.3,
-        borderWidth: 2,
-        borderColor: color,
-      }}
-    />
-  </View>
-);
-
-export const MoonIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.6,
-        height: size * 0.6,
-        borderRadius: size * 0.3,
-        borderWidth: 2,
-        borderLeftWidth: 0,
-        borderColor: color,
-      }}
-    />
-  </View>
-);
-
-export const LanguagesIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.7,
-        height: size * 0.6,
-        borderWidth: 1.5,
-        borderColor: color,
-        borderRadius: 3,
-      }}
-    />
-  </View>
-);
-
-export const InfoIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 18 }) => (
-  <View
-    style={{
-      width: size,
-      height: size,
-      borderRadius: size / 2,
-      borderWidth: 1.5,
-      borderColor: color,
-      justifyContent: 'center',
-      alignItems: 'center',
-    }}
-  >
-    <View style={{ width: 2, height: 2, backgroundColor: color, borderRadius: 1, marginBottom: 2 }} />
-    <View style={{ width: 2, height: 5, backgroundColor: color, borderRadius: 1 }} />
-  </View>
-);
-
-export const CheckIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 16 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.6,
-        height: size * 0.35,
-        borderBottomWidth: 2,
-        borderLeftWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '-45deg' }],
-        marginTop: -size * 0.1,
-      }}
-    />
-  </View>
-);
-
-export const ArrowUpRightIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 16 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.5,
-        height: size * 0.5,
-        borderTopWidth: 2,
-        borderRightWidth: 2,
-        borderColor: color,
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        width: size * 0.7,
-        height: 2,
-        backgroundColor: color,
-        transform: [{ rotate: '-45deg' }],
-      }}
-    />
-  </View>
-);
-
-export const UsersIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 18 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.36,
-        height: size * 0.36,
-        borderRadius: size * 0.18,
-        borderWidth: 1.6,
-        borderColor: color,
-      }}
-    />
-    <View
-      style={{
-        width: size * 0.7,
-        height: size * 0.35,
-        borderTopLeftRadius: size * 0.25,
-        borderTopRightRadius: size * 0.25,
-        borderWidth: 1.6,
-        borderBottomWidth: 0,
-        borderColor: color,
-        marginTop: 1,
-      }}
-    />
-  </View>
-);
-
-export const UserRoundIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 18 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.44,
-        height: size * 0.44,
-        borderRadius: size * 0.22,
-        borderWidth: 1.6,
-        borderColor: color,
-      }}
-    />
-    <View
-      style={{
-        width: size * 0.72,
-        height: size * 0.36,
-        borderTopLeftRadius: size * 0.26,
-        borderTopRightRadius: size * 0.26,
-        borderWidth: 1.6,
-        borderBottomWidth: 0,
-        borderColor: color,
-        marginTop: 1,
-      }}
-    />
-  </View>
-);
-
-export const WifiOffIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 18 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.7,
-        height: size * 0.7,
-        borderTopWidth: 2,
-        borderColor: color,
-        borderTopLeftRadius: size * 0.4,
-        borderTopRightRadius: size * 0.4,
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        width: size * 0.9,
-        height: 1.6,
-        backgroundColor: color,
-        transform: [{ rotate: '45deg' }],
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        bottom: 2,
-        width: 3,
-        height: 3,
-        borderRadius: 1.5,
-        backgroundColor: color,
-      }}
-    />
-  </View>
-);
-
-export const AlertTriangleIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 18 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: 0,
-        height: 0,
-        borderLeftWidth: size * 0.45,
-        borderRightWidth: size * 0.45,
-        borderBottomWidth: size * 0.75,
-        borderLeftColor: 'transparent',
-        borderRightColor: 'transparent',
-        borderBottomColor: color,
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        bottom: size * 0.2,
-        width: 2,
-        height: 2,
-        borderRadius: 1,
-        backgroundColor: '#FFFFFF',
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        top: size * 0.3,
-        width: 1.8,
-        height: size * 0.25,
-        backgroundColor: '#FFFFFF',
-        borderRadius: 1,
-      }}
-    />
-  </View>
-);
-
-export const XIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 18 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        position: 'absolute',
-        width: size * 0.75,
-        height: 2,
-        backgroundColor: color,
-        borderRadius: 1,
-        transform: [{ rotate: '45deg' }],
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        width: size * 0.75,
-        height: 2,
-        backgroundColor: color,
-        borderRadius: 1,
-        transform: [{ rotate: '-45deg' }],
-      }}
-    />
-  </View>
-);
-
-
-
+export const ArrowLeftIcon = createIcon('arrow-left');
+export const ArrowRightIcon = createIcon('arrow-right');
+export const ChevronRightIcon = createIcon('chevron-right', 18);
+export const ChevronDownIcon = createIcon('chevron-down', 16);
+export const PlusIcon = createIcon('plus', 18);
+export const HouseIcon = createIcon('home-outline');
+export const CalendarDaysIcon = createIcon('calendar-month-outline');
+export const Repeat2Icon = createIcon('swap-horizontal');
+export const ActivityNavIcon = createIcon('chart-timeline-variant');
+export const EllipsisIcon = createIcon('dots-horizontal');
+export const BellIcon = createIcon('bell-outline');
+export const SunMoonIcon = createIcon('theme-light-dark');
+export const MoonIcon = createIcon('moon-waning-crescent');
+export const LanguagesIcon = createIcon('translate');
+export const InfoIcon = createIcon('information-outline', 18);
+export const CheckIcon = createIcon('check', 16);
+export const ArrowUpRightIcon = createIcon('arrow-top-right', 16);
+export const UsersIcon = createIcon('account-multiple-outline', 18);
+export const UserRoundIcon = createIcon('account-outline', 18);
+export const WifiOffIcon = createIcon('wifi-off', 18);
+export const AlertTriangleIcon = createIcon('alert-outline', 18);
+export const XIcon = createIcon('close', 18);
+export const CreditCardIcon = createIcon('credit-card-outline');
+export const ClockIcon = createIcon('clock-outline');
+export const SettingsIcon = createIcon('cog-outline');
+export const ShieldIcon = createIcon('shield-outline');
+export const LinkIcon = createIcon('link-variant');
+export const MailIcon = createIcon('email-outline');
+export const CircleCheckIcon = createIcon('check-circle-outline', 24);
+export const FlashIcon = createIcon('lightning-bolt', 16);

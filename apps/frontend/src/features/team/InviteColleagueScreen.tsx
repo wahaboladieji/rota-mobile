@@ -13,6 +13,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTheme, titleLargeText, titleMediumText } from '../../theme';
 import { Role } from '@rota/shared';
 import { apiRequest } from '../../services/api';
+import { ArrowLeftIcon, LinkIcon, InfoIcon } from '../../components/ReviewIcons';
 
 interface InviteColleagueScreenProps {
   teamId: string;
@@ -23,82 +24,6 @@ interface InviteColleagueScreenProps {
   onSuccess: () => void;
   onBack: () => void;
 }
-
-const ArrowLeftIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size * 0.7, height: 2, backgroundColor: color }} />
-    <View
-      style={{
-        position: 'absolute',
-        left: 2,
-        width: size * 0.4,
-        height: size * 0.4,
-        borderTopWidth: 2,
-        borderLeftWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '-45deg' }],
-      }}
-    />
-  </View>
-);
-
-const LinkIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 24 }) => (
-  <View
-    style={{
-      width: size,
-      height: size,
-      justifyContent: 'center',
-      alignItems: 'center',
-    }}
-  >
-    <View
-      style={{
-        width: size * 0.5,
-        height: size * 0.35,
-        borderRadius: size * 0.18,
-        borderWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '-45deg' }, { translateX: -2 }],
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        width: size * 0.5,
-        height: size * 0.35,
-        borderRadius: size * 0.18,
-        borderWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '-45deg' }, { translateX: 2 }],
-      }}
-    />
-  </View>
-);
-
-const InfoIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 18 }) => (
-  <View
-    style={{
-      width: size,
-      height: size,
-      borderRadius: size / 2,
-      borderWidth: 1.8,
-      borderColor: color,
-      justifyContent: 'center',
-      alignItems: 'center',
-    }}
-  >
-    <View
-      style={{
-        width: 2,
-        height: 2,
-        backgroundColor: color,
-        borderRadius: 1,
-        marginBottom: 2,
-      }}
-    />
-    <View style={{ width: 2, height: size * 0.35, backgroundColor: color, borderRadius: 1 }} />
-  </View>
-);
 
 export const InviteColleagueScreen: React.FC<InviteColleagueScreenProps> = ({
   teamId,

@@ -1,5 +1,6 @@
 {
   "name": "rota",
+  "main": "index.js",
   "version": "0.1.0",
   "private": true,
   "description": "Rota - Android-first shift scheduling app for small teams",
@@ -8,6 +9,7 @@
     "apps/*"
   ],
   "scripts": {
+    "start": "npm run start:frontend",
     "build": "npm run build --workspace=@rota/shared && npm run build --workspace=@rota/backend",
     "typecheck": "npm run typecheck --workspace=@rota/shared && npm run typecheck --workspace=@rota/backend && npm run typecheck --workspace=@rota/frontend",
     "test": "npm run test --workspace=@rota/backend",
@@ -22,5 +24,11 @@
   },
   "devDependencies": {
     "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "expo-constants": "~57.0.22",
+    "expo-dev-client": "~57.0.20",
+    "expo-device": "~57.0.2",
+    "expo-notifications": "~57.0.23"
   }
 }

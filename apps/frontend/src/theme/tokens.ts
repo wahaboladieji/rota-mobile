@@ -45,6 +45,11 @@ export const rawTokens = {
       surfaceContainer: 'hsl(0, 0%, 93%)',
       surfaceContainerHigh: 'hsl(0, 0%, 91%)',
       surfaceContainerHighest: 'hsl(0, 0%, 89%)',
+      // Neutral 99 surface (user-approved addition for the shift-details notice).
+      // Between surface-container-lowest (100%) and surface-container-low (95%);
+      // the supplied neutral ramp has no 99 tone yet, so the token source still
+      // needs the matching primitive added.
+      neutral99: 'hsl(0, 0%, 99%)',
     },
     dark: {
       primary: 'hsl(221, 85%, 55%)',
@@ -83,6 +88,8 @@ export const rawTokens = {
       surfaceContainer: 'hsl(300, 100%, 50%)',
       surfaceContainerHigh: 'hsl(300, 100%, 50%)',
       surfaceContainerHighest: 'hsl(300, 100%, 50%)',
+      // Unresolved placeholder magenta: dark neutral-99 has no approved value yet.
+      neutral99: 'hsl(300, 100%, 50%)',
     },
   },
 

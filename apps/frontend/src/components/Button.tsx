@@ -10,52 +10,9 @@ import {
   AccessibilityRole,
 } from 'react-native';
 import { useTheme } from '../theme';
+import { FlashIcon } from './ReviewIcons';
 
-/**
- * Modern flash/bolt icon crafted with pure React Native primitives.
- * Two overlapping right triangles form a streamlined lightning silhouette.
- */
-export const FlashIcon: React.FC<{ color: string; size?: number }> = ({
-  color,
-  size = 16,
-}) => {
-  const scale = size / 16;
-  const frame = {
-    position: 'absolute' as const,
-    width: 0,
-    height: 0,
-  };
-  return (
-    <View style={{ width: 16 * scale, height: 16 * scale }}>
-      <View
-        style={[
-          frame,
-          {
-            left: 1 * scale,
-            top: 1 * scale,
-            borderLeftWidth: 6 * scale,
-            borderBottomWidth: 8 * scale,
-            borderLeftColor: 'transparent',
-            borderBottomColor: color,
-          },
-        ]}
-      />
-      <View
-        style={[
-          frame,
-          {
-            left: 4 * scale,
-            top: 7 * scale,
-            borderRightWidth: 6 * scale,
-            borderTopWidth: 8 * scale,
-            borderTopColor: color,
-            borderRightColor: 'transparent',
-          },
-        ]}
-      />
-    </View>
-  );
-};
+export { FlashIcon };
 
 interface ButtonProps {
   title: string;

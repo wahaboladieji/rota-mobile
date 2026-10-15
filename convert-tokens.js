@@ -54,6 +54,12 @@ const PRIMITIVE_DEFINITIONS = {
     label: 'Neutral 98 (Off-White / Light Canvas)',
     tone: 98
   },
+  'hsl(0, 0%, 99%)': {
+    name: 'primitive-color-neutral-99',
+    palette: 'neutral',
+    label: 'Neutral 99 (Near-White Notice Surface)',
+    tone: 99
+  },
   'hsl(0, 0%, 95%)': {
     name: 'primitive-color-neutral-95',
     palette: 'neutral',

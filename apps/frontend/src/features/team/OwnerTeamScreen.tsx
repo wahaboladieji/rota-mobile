@@ -13,6 +13,13 @@ import { useTheme, titleLargeText, titleMediumText } from '../../theme';
 import { useQueryClient } from '@tanstack/react-query';
 import { TeamMembersResponse, TeamMemberItem, PendingInvitationItem } from '@rota/shared';
 import { apiRequest } from '../../services/api';
+import {
+  ArrowLeftIcon,
+  PlusIcon,
+  ChevronRightIcon,
+  UserRoundIcon,
+  MailIcon,
+} from '../../components/ReviewIcons';
 
 interface OwnerTeamScreenProps {
   teamId: string;
@@ -21,108 +28,6 @@ interface OwnerTeamScreenProps {
   onRefresh: () => void;
   onBack: () => void;
 }
-
-// Vector icons
-const ArrowLeftIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size * 0.7, height: 2, backgroundColor: color }} />
-    <View
-      style={{
-        position: 'absolute',
-        left: 2,
-        width: size * 0.4,
-        height: size * 0.4,
-        borderTopWidth: 2,
-        borderLeftWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '-45deg' }],
-      }}
-    />
-  </View>
-);
-
-const PlusIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 16 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size, height: 2, backgroundColor: color, borderRadius: 1 }} />
-    <View
-      style={{
-        position: 'absolute',
-        width: 2,
-        height: size,
-        backgroundColor: color,
-        borderRadius: 1,
-      }}
-    />
-  </View>
-);
-
-const ChevronRightIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 18 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.4,
-        height: size * 0.4,
-        borderTopWidth: 2,
-        borderRightWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '45deg' }],
-        marginLeft: -2,
-      }}
-    />
-  </View>
-);
-
-const UserRoundIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-    <View
-      style={{
-        width: size * 0.45,
-        height: size * 0.45,
-        borderRadius: size * 0.23,
-        borderWidth: 1.8,
-        borderColor: color,
-      }}
-    />
-    <View
-      style={{
-        width: size * 0.8,
-        height: size * 0.4,
-        borderTopLeftRadius: size * 0.4,
-        borderTopRightRadius: size * 0.4,
-        borderWidth: 1.8,
-        borderBottomWidth: 0,
-        borderColor: color,
-        marginTop: 1,
-      }}
-    />
-  </View>
-);
-
-const MailIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View
-    style={{
-      width: size,
-      height: size * 0.75,
-      borderRadius: 3,
-      borderWidth: 1.8,
-      borderColor: color,
-      justifyContent: 'flex-start',
-    }}
-  >
-    <View
-      style={{
-        width: size * 0.6,
-        height: size * 0.35,
-        borderBottomWidth: 1.8,
-        borderRightWidth: 1.8,
-        borderColor: color,
-        transform: [{ rotate: '45deg' }],
-        marginLeft: size * 0.12,
-        marginTop: -size * 0.12,
-      }}
-    />
-  </View>
-);
 
 export const OwnerTeamScreen: React.FC<OwnerTeamScreenProps> = ({
   teamId,

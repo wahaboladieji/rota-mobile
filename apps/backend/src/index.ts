@@ -3,12 +3,13 @@ dotenv.config();
 
 import { app } from './app';
 import { logger } from './observability/logger';
-import { createEmailWorker } from './jobs/worker';
+import { createEmailWorker, createPushWorker } from './jobs/worker';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-// Initialize email worker for background job processing
+// Initialize background workers for emails and push notifications
 const emailWorker = createEmailWorker();
+const pushWorker = createPushWorker();
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`Rota Express API listening on port ${PORT}`, { port: PORT });
@@ -20,8 +21,9 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 });
 
 const shutdown = async () => {
-  logger.info('Shutting down server and email worker...');
+  logger.info('Shutting down server and background workers...');
   await emailWorker.close();
+  await pushWorker.close();
   server.close(() => {
     process.exit(0);
   });

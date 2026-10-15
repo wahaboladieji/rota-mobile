@@ -25,6 +25,8 @@ import { OnboardingScreen } from './src/features/onboarding/OnboardingScreen';
 import { WelcomeScreen } from './src/features/welcome/WelcomeScreen';
 import { DashboardScreen } from './src/features/dashboard/DashboardScreen';
 import { InvitationAcceptScreen } from './src/features/invitation/InvitationAcceptScreen';
+import { registerForPushNotificationsAsync } from './src/services/notifications';
+import { registerPushTokenApi } from './src/services/api';
 
 type AuthView = 'WELCOME' | 'LOGIN' | 'SIGNUP' | 'MAGIC_LINK' | 'PASSWORD_RESET' | 'INVITE';
 type AppView = 'ONBOARDING' | 'DASHBOARD';
@@ -38,6 +40,7 @@ const MainNavigator: React.FC = () => {
 
   const [authView, setAuthView] = useState<AuthView>('WELCOME');
   const [appView, setAppView] = useState<AppView>('DASHBOARD');
+  const [dashboardTab, setDashboardTab] = useState<'HOME' | 'SCHEDULE' | 'SWAPS' | 'ACTIVITY' | 'MORE'>('HOME');
   const [passwordResetEmail, setPasswordResetEmail] = useState('');
   const [loginInitialEmail, setLoginInitialEmail] = useState('');
   const [pendingInviteToken, setPendingInviteToken] = useState<string | null>(null);
@@ -45,6 +48,56 @@ const MainNavigator: React.FC = () => {
   useEffect(() => {
     loadSavedAuth();
   }, [loadSavedAuth]);
+
+  // Register push notifications when user is authenticated
+  useEffect(() => {
+    if (accessToken && user) {
+      registerForPushNotificationsAsync().then((pushToken) => {
+        if (pushToken) {
+          registerPushTokenApi(pushToken).catch((err) => {
+            console.warn('[PushToken] Failed to register push token with backend:', err);
+          });
+        }
+      });
+    }
+  }, [accessToken, user]);
+
+  // Push notification tap listener (Deep linking into exact screens)
+  useEffect(() => {
+    let Notifications: typeof import('expo-notifications') | null = null;
+    try {
+      Notifications = require('expo-notifications');
+    } catch {
+      // Native module unavailable
+    }
+
+    if (Notifications && typeof Notifications.addNotificationResponseReceivedListener === 'function') {
+      const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+        try {
+          const data = response.notification.request.content.data;
+          console.log('[NotificationTap] User tapped notification with data:', data);
+
+          if (data && typeof data === 'object') {
+            const screen = data.screen || (data.group === 'SHIFT' ? 'SHIFTS' : data.group === 'SWAP' ? 'SWAPS' : 'HOME');
+
+            if (screen === 'SHIFTS' || screen === 'SCHEDULE') {
+              setDashboardTab('SCHEDULE');
+            } else if (screen === 'SWAPS') {
+              setDashboardTab('SWAPS');
+            } else if (screen === 'ACTIVITY') {
+              setDashboardTab('ACTIVITY');
+            } else if (screen === 'BILLING') {
+              setDashboardTab('MORE');
+            }
+          }
+        } catch (e) {
+          console.warn('[NotificationTap] Error handling tap:', e);
+        }
+      });
+
+      return () => subscription.remove();
+    }
+  }, []);
 
   // Deep linking listener for invitation links (rota://invite/:token, exp://.../--/invite/:token, http(s)://.../invite/:token)
   useEffect(() => {
@@ -220,10 +273,12 @@ const MainNavigator: React.FC = () => {
         />
       ) : (
         <DashboardScreen
+          initialTab={dashboardTab}
           onLogout={() => {
             queryClient.clear();
             setLoginInitialEmail('');
             setPendingInviteToken(null);
+            setDashboardTab('HOME');
             setAuthView('WELCOME');
           }}
           onNavigateToOnboarding={() => setAppView('ONBOARDING')}

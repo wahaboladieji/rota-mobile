@@ -84,6 +84,9 @@ describe('Tenant Isolation & Role Permission Guards (PRD F1.3, F1.4)', () => {
         await prismaPrimary.activityEvent.deleteMany({
           where: { teamId: { in: allTeamIds } },
         });
+        await prismaPrimary.shift.deleteMany({
+          where: { teamId: { in: allTeamIds } },
+        });
         await prismaPrimary.team.deleteMany({
           where: { id: { in: allTeamIds } },
         });
@@ -152,13 +155,28 @@ describe('Tenant Isolation & Role Permission Guards (PRD F1.3, F1.4)', () => {
       expect(res.body.error).toMatch(/forbidden/i);
     });
 
-    it('allows Owner to access shift delete mutation endpoint', async () => {
-      const fakeShiftId = '00000000-0000-0000-0000-000000000001';
+    it('allows Owner to access shift delete mutation endpoint and marks it CANCELLED', async () => {
+      const shift = await prismaPrimary.shift.create({
+        data: {
+          teamId,
+          assigneeId: staffId,
+          startAt: new Date(Date.now() + 86400000),
+          endAt: new Date(Date.now() + 86400000 + 8 * 3600000),
+          status: 'PUBLISHED',
+        },
+      });
+
       const res = await request(app)
-        .delete(`/api/teams/${teamId}/shifts/${fakeShiftId}`)
+        .delete(`/api/teams/${teamId}/shifts/${shift.id}`)
         .set('Authorization', `Bearer ${ownerToken}`);
 
       expect(res.status).toBe(200);
+      expect(res.body.message).toMatch(/deleted|cancelled/i);
+
+      const updated = await prismaPrimary.shift.findUnique({
+        where: { id: shift.id },
+      });
+      expect(updated?.status).toBe('CANCELLED');
     });
   });
 

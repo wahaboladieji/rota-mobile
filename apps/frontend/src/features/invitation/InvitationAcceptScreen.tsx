@@ -12,6 +12,7 @@ import { useAuthStore } from '../../state/authStore';
 import { apiRequest } from '../../services/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '../../state/queryClient';
+import { ArrowLeftIcon } from '../../components/ReviewIcons';
 
 interface InvitationDetails {
   valid: boolean;
@@ -29,24 +30,6 @@ interface InvitationAcceptScreenProps {
   onNavigateToLogin: (prefilledEmail?: string) => void;
   onNavigateToSignUp: (prefilledEmail?: string) => void;
 }
-
-const ArrowLeftIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size * 0.7, height: 2, backgroundColor: color }} />
-    <View
-      style={{
-        position: 'absolute',
-        left: 2,
-        width: size * 0.4,
-        height: size * 0.4,
-        borderTopWidth: 2,
-        borderLeftWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '-45deg' }],
-      }}
-    />
-  </View>
-);
 
 export const InvitationAcceptScreen: React.FC<InvitationAcceptScreenProps> = ({
   token,
