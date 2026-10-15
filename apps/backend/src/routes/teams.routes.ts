@@ -155,19 +155,6 @@ teamsRouter.get(
   }
 );
 
-/**
- * DELETE /api/teams/:teamId/shifts/:shiftId - Direct mutation test endpoint
- * Staff role is rejected with 403 Forbidden; Manager/Owner authorized
- */
-teamsRouter.delete(
-  '/teams/:teamId/shifts/:shiftId',
-  authenticate,
-  requireTeamMembership([Role.OWNER, Role.MANAGER]),
-  async (req: AuthenticatedRequest, res: Response) => {
-    // Only reachable by OWNER or MANAGER; Staff direct delete calls fail at guard
-    res.status(200).json({ message: 'Shift deleted successfully' });
-  }
-);
 
 /**
  * GET /api/plans - Retrieve available subscription plans

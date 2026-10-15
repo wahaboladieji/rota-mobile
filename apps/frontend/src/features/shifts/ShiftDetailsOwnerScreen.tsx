@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
 import { useTheme, titleMediumText } from '../../theme';
 import { ArrowLeftIcon } from '../../components/ReviewIcons';
 
 export interface StaffShiftItem {
   id: string;
+  assigneeId?: string;
   assigneeName: string;
   assigneeRole: string;
   date: string;
@@ -15,6 +16,9 @@ export interface StaffShiftItem {
   weeklyAvailability?: string;
   status?: 'CURRENT' | 'UPCOMING';
   avatarInitials?: string;
+  dateString?: string;
+  startAt?: string;
+  endAt?: string;
 }
 
 interface ShiftDetailsOwnerScreenProps {
@@ -22,7 +26,7 @@ interface ShiftDetailsOwnerScreenProps {
   teamName: string;
   onBack: () => void;
   onEditShift: () => void;
-  onCancelShift: () => void;
+  onCancelShift: () => Promise<void> | void;
 }
 
 export const ShiftDetailsOwnerScreen: React.FC<ShiftDetailsOwnerScreenProps> = ({
@@ -42,6 +46,7 @@ export const ShiftDetailsOwnerScreen: React.FC<ShiftDetailsOwnerScreenProps> = (
 }) => {
   const { colors } = useTheme();
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -159,14 +164,26 @@ export const ShiftDetailsOwnerScreen: React.FC<ShiftDetailsOwnerScreenProps> = (
             <View style={{ gap: 12, marginTop: 20 }}>
               <TouchableOpacity
                 style={[styles.dangerButton, { backgroundColor: colors.error }]}
-                onPress={() => {
-                  setShowCancelModal(false);
-                  onCancelShift();
+                disabled={isCancelling}
+                onPress={async () => {
+                  setIsCancelling(true);
+                  try {
+                    await onCancelShift();
+                    setShowCancelModal(false);
+                  } catch {
+                    // Modal remains open or handled by caller
+                  } finally {
+                    setIsCancelling(false);
+                  }
                 }}
               >
-                <Text style={[styles.dangerButtonText, { color: colors.onError }]}>
-                  Cancel shift
-                </Text>
+                {isCancelling ? (
+                  <ActivityIndicator color={colors.onError} size="small" />
+                ) : (
+                  <Text style={[styles.dangerButtonText, { color: colors.onError }]}>
+                    Cancel shift
+                  </Text>
+                )}
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -177,6 +194,7 @@ export const ShiftDetailsOwnerScreen: React.FC<ShiftDetailsOwnerScreenProps> = (
                     borderColor: colors.outlineVariant,
                   },
                 ]}
+                disabled={isCancelling}
                 onPress={() => setShowCancelModal(false)}
               >
                 <Text style={[styles.secondaryButtonText, { color: colors.onSurface }]}>

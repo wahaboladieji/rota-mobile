@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,9 @@ import {
 } from 'react-native';
 import { useTheme, titleLargeText, titleMediumText } from '../../theme';
 import { ChevronRightIcon, BellIcon, SunMoonIcon, LanguagesIcon, MoonIcon, InfoIcon, ArrowLeftIcon } from '../../components/ReviewIcons';
+import { registerForPushNotificationsAsync, isNotificationsModuleAvailable, generateSimulatedPushToken } from '../../services/notifications';
+import { sendTestNotificationApi, registerPushTokenApi } from '../../services/api';
+import { useAuthStore } from '../../state/authStore';
 
 interface SettingsPreferencesScreenProps {
   onBack: () => void;
@@ -21,6 +24,20 @@ export const SettingsPreferencesScreen: React.FC<SettingsPreferencesScreenProps>
   const { colors, typography, spacingCollection } = useTheme();
 
   const [subView, setSubView] = useState<SettingsSubView>('SETTINGS_MAIN');
+
+  // Push token and test state
+  const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
+  const [isRegisteringToken, setIsRegisteringToken] = useState(false);
+  const [testPushStatus, setTestPushStatus] = useState<string | null>(null);
+  const [isSendingTestPush, setIsSendingTestPush] = useState(false);
+
+  useEffect(() => {
+    registerForPushNotificationsAsync().then((token) => {
+      if (token) {
+        setExpoPushToken(token);
+      }
+    });
+  }, []);
 
   // Preferences state
   const [shiftChangesEnabled, setShiftChangesEnabled] = useState(true);
@@ -307,6 +324,124 @@ export const SettingsPreferencesScreen: React.FC<SettingsPreferencesScreenProps>
               </View>
               <ChevronRightIcon color={colors.onSurfaceVariant} size={18} />
             </TouchableOpacity>
+          </View>
+
+          {/* Remote Push Notification Device Card */}
+          <View style={[styles.card, { backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant, marginTop: 16 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+              <BellIcon color={colors.primary} size={20} />
+              <Text style={[styles.listTitle, { color: colors.onSurface, marginLeft: 10 }]}>
+                Expo Push Notifications
+              </Text>
+            </View>
+
+            {!isNotificationsModuleAvailable() && (
+              <View style={[styles.noticeBox, { backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant, marginBottom: 14 }]}>
+                <InfoIcon color={colors.primary} size={18} />
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={[styles.noticeTitle, { color: colors.onSurface }]}>Native Module Not in this APK</Text>
+                  <Text style={[styles.noticeText, { color: colors.onSurfaceVariant }]}>
+                    This APK was built before expo-notifications was added. A fresh EAS build is required to receive system-tray push notifications. You can use the development token below to test the backend API now.
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {expoPushToken ? (
+              <>
+                <Text style={[styles.footnote, { color: colors.onSurfaceVariant, marginBottom: 8 }]}>
+                  Registered Push Token:
+                </Text>
+                <View style={{ backgroundColor: colors.surfaceContainerLow, padding: 12, borderRadius: 12, marginBottom: 14 }}>
+                  <Text style={{ fontFamily: 'monospace', fontSize: 11, color: colors.onSurface }} numberOfLines={3} selectable>
+                    {expoPushToken}
+                  </Text>
+                </View>
+
+                {testPushStatus && (
+                  <View style={[styles.noticeBox, { backgroundColor: colors.primaryContainer, borderColor: colors.primary, marginBottom: 14 }]}>
+                    <Text style={{ color: colors.onPrimaryContainer, fontSize: 13, fontWeight: '600' }}>
+                      {testPushStatus}
+                    </Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.primaryButton, { backgroundColor: colors.primary, opacity: isSendingTestPush ? 0.7 : 1 }]}
+                  disabled={isSendingTestPush}
+                  onPress={async () => {
+                    setIsSendingTestPush(true);
+                    setTestPushStatus(null);
+                    try {
+                      const res = await sendTestNotificationApi(expoPushToken);
+                      setTestPushStatus('✓ Test notification dispatched by backend to Expo Push Service!');
+                    } catch (err: unknown) {
+                      setTestPushStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
+                    } finally {
+                      setIsSendingTestPush(false);
+                    }
+                  }}
+                >
+                  <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
+                    {isSendingTestPush ? 'Dispatching...' : 'Send Test Push Notification'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <View>
+                <Text style={[styles.footnote, { color: colors.onSurfaceVariant, marginBottom: 12 }]}>
+                  {isRegisteringToken ? 'Requesting push token from Expo...' : 'Generate or simulate a push token to register this device with the server.'}
+                </Text>
+
+                {isNotificationsModuleAvailable() ? (
+                  <TouchableOpacity
+                    style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                    disabled={isRegisteringToken}
+                    onPress={async () => {
+                      setIsRegisteringToken(true);
+                      setTestPushStatus(null);
+                      const token = await registerForPushNotificationsAsync();
+                      setIsRegisteringToken(false);
+                      if (token) {
+                        setExpoPushToken(token);
+                        await registerPushTokenApi(token).catch((err) => {
+                          setTestPushStatus(`Registered locally, backend error: ${err.message}`);
+                        });
+                      } else {
+                        setTestPushStatus('Failed to retrieve native token. Check device permissions.');
+                      }
+                    }}
+                  >
+                    <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
+                      {isRegisteringToken ? 'Generating...' : 'Generate Push Token'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                    disabled={isRegisteringToken}
+                    onPress={async () => {
+                      setIsRegisteringToken(true);
+                      const currentUserId = useAuthStore.getState().user?.id || 'demo-device';
+                      const token = generateSimulatedPushToken(currentUserId);
+                      setExpoPushToken(token);
+                      try {
+                        await registerPushTokenApi(token);
+                        setTestPushStatus('✓ Development push token registered with backend!');
+                      } catch (err: unknown) {
+                        setTestPushStatus(`Backend error: ${err instanceof Error ? err.message : String(err)}`);
+                      } finally {
+                        setIsRegisteringToken(false);
+                      }
+                    }}
+                  >
+                    <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
+                      {isRegisteringToken ? 'Registering...' : 'Use Development Push Token'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
 
           <Text style={[styles.footnote, { color: colors.onSurfaceVariant, marginTop: 16 }]}>

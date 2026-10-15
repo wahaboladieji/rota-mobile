@@ -9,6 +9,7 @@ import {
 import { prismaPrimary } from '../data/db';
 import { authenticate, requireTeamMembership, AuthenticatedRequest } from '../auth/guards';
 import { logger } from '../observability/logger';
+import { enqueuePushJob } from '../jobs/queue';
 
 export const swapsRouter = Router();
 
@@ -158,6 +159,22 @@ swapsRouter.post(
     });
 
     logger.info('Swap requested', { swapId: swap.id, teamId, requesterId: userId, colleagueId });
+
+    // Enqueue background push notification to colleague
+    const requesterName = req.user!.email ? req.user!.email.split('@')[0] : 'A teammate';
+    enqueuePushJob({
+      userId: colleagueId,
+      teamId,
+      group: 'SWAP',
+      title: 'Shift Swap Request 🔄',
+      body: `${requesterName} wants to swap a shift with you. Tap to review.`,
+      data: {
+        screen: 'SWAPS',
+        swapId: swap.id,
+        teamId,
+      },
+    }).catch((err) => logger.warn('Failed to enqueue swap request push notification', { error: err.message }));
+
     res.status(201).json(swap);
   }
 );
@@ -222,6 +239,23 @@ swapsRouter.post(
     });
 
     logger.info('Colleague decided swap', { swapId, decision, newStatus });
+
+    const colleagueName = req.user!.email ? req.user!.email.split('@')[0] : 'Colleague';
+    enqueuePushJob({
+      userId: swap.requesterId,
+      teamId,
+      group: 'SWAP',
+      title: decision === 'ACCEPT' ? 'Swap Accepted by Colleague 👍' : 'Swap Declined ❌',
+      body: decision === 'ACCEPT'
+        ? `${colleagueName} accepted your swap request! Pending manager approval.`
+        : `${colleagueName} declined your swap request.`,
+      data: {
+        screen: 'SWAPS',
+        swapId: swap.id,
+        teamId,
+      },
+    }).catch((err) => logger.warn('Failed to enqueue colleague decision push notification', { error: err.message }));
+
     res.status(200).json(updated);
   }
 );
@@ -386,6 +420,41 @@ swapsRouter.post(
     });
 
     logger.info('Manager decided swap', { swapId, decision });
+
+    const isApproved = decision === 'APPROVE';
+    const title = isApproved ? 'Swap Request Approved! 🎉' : 'Swap Request Denied';
+    const body = isApproved
+      ? 'A manager has approved your shift swap. Schedules have been updated.'
+      : 'A manager declined your shift swap request.';
+
+    // Notify requester
+    enqueuePushJob({
+      userId: swap.requesterId,
+      teamId,
+      group: 'SWAP',
+      title,
+      body,
+      data: {
+        screen: 'SWAPS',
+        swapId: swap.id,
+        teamId,
+      },
+    }).catch((err) => logger.warn('Failed to enqueue manager decision push to requester', { error: err.message }));
+
+    // Notify colleague
+    enqueuePushJob({
+      userId: swap.colleagueId,
+      teamId,
+      group: 'SWAP',
+      title,
+      body,
+      data: {
+        screen: 'SWAPS',
+        swapId: swap.id,
+        teamId,
+      },
+    }).catch((err) => logger.warn('Failed to enqueue manager decision push to colleague', { error: err.message }));
+
     res.status(200).json(result);
   }
 );

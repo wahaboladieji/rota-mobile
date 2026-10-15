@@ -34,7 +34,8 @@
       "surface-container-low-color": "hsl(0, 0%, 95%)",
       "surface-container-color": "hsl(0, 0%, 93%)",
       "surface-container-high-color": "hsl(0, 0%, 91%)",
-      "surface-container-highest-color": "hsl(0, 0%, 89%)"
+      "surface-container-highest-color": "hsl(0, 0%, 89%)",
+      "neutral-99-color": "hsl(0, 0%, 99%)"
     },
     "dark": {
       "primary-color": "hsl(221, 85%, 55%)",
@@ -70,7 +71,8 @@
       "surface-container-low-color": "hsl(0, 0%, 11%)",
       "surface-container-color": "hsl(300, 100%, 50%)",
       "surface-container-high-color": "hsl(300, 100%, 50%)",
-      "surface-container-highest-color": "hsl(300, 100%, 50%)"
+      "surface-container-highest-color": "hsl(300, 100%, 50%)",
+      "neutral-99-color": "hsl(300, 100%, 50%)"
     }
   },
   "typography": {

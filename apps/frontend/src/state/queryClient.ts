@@ -13,8 +13,15 @@ export const queryClient = new QueryClient({
     queries: {
       staleTime: 60 * 1000, // 60 seconds default
       gcTime: 10 * 60 * 1000, // 10 minutes cache retention
-      retry: 2,
-      refetchOnWindowFocus: true,
+      retry: (failureCount, error: any) => {
+        // Do not retry 401 or 403 authorization failures
+        const msg = error?.message || '';
+        if (msg.includes('401') || msg.includes('403') || msg.includes('Unauthorized') || msg.includes('Forbidden')) {
+          return false;
+        }
+        return failureCount < 2;
+      },
+      refetchOnWindowFocus: false, // Prevent continuous query storms when focusing or modal switching
       refetchOnReconnect: true,
     },
   },

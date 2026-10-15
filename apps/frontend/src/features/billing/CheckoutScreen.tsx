@@ -10,6 +10,7 @@ import {
 import { useTheme, titleLargeText, titleMediumText } from '../../theme';
 import { PlanCode } from '@rota/shared';
 import { apiRequest } from '../../services/api';
+import { ArrowLeftIcon, CreditCardIcon } from '../../components/ReviewIcons';
 
 interface CheckoutScreenProps {
   teamId: string;
@@ -18,49 +19,6 @@ interface CheckoutScreenProps {
   onPaymentPending: (paymentAttemptId: string) => void;
   onBack: () => void;
 }
-
-const ArrowLeftIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size * 0.7, height: 2, backgroundColor: color }} />
-    <View
-      style={{
-        position: 'absolute',
-        left: 2,
-        width: size * 0.4,
-        height: size * 0.4,
-        borderTopWidth: 2,
-        borderLeftWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '-45deg' }],
-      }}
-    />
-  </View>
-);
-
-const CreditCardIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 24 }) => (
-  <View
-    style={{
-      width: size * 1.2,
-      height: size * 0.8,
-      borderRadius: 4,
-      borderWidth: 2,
-      borderColor: color,
-      justifyContent: 'flex-start',
-    }}
-  >
-    <View style={{ height: 4, backgroundColor: color, marginTop: 3 }} />
-    <View
-      style={{
-        width: 4,
-        height: 3,
-        backgroundColor: color,
-        borderRadius: 1,
-        marginTop: 3,
-        marginLeft: 3,
-      }}
-    />
-  </View>
-);
 
 export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
   teamId,

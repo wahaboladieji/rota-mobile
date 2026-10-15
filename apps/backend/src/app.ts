@@ -11,6 +11,7 @@ import { shiftsRouter } from './routes/shifts.routes';
 import { swapsRouter } from './routes/swaps.routes';
 import { preferencesRouter } from './routes/preferences.routes';
 import { activityRouter } from './routes/activity.routes';
+import { devicesRouter } from './routes/devices.routes';
 import { logger } from './observability/logger';
 
 export const app = express();
@@ -52,6 +53,8 @@ app.use('/api', shiftsRouter);
 app.use('/api', swapsRouter);
 app.use('/api', preferencesRouter);
 app.use('/api', activityRouter);
+app.use('/api', devicesRouter);
+app.use('/', devicesRouter);
 
 // 404 handler
 app.use((_req: Request, res: Response) => {

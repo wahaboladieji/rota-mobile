@@ -11,56 +11,13 @@ import {
 import { useTheme, titleLargeText } from '../../theme';
 import { apiRequest } from '../../services/api';
 import { TeamResponse } from '@rota/shared';
+import { ArrowRightIcon, InfoIcon } from '../../components/ReviewIcons';
 
 interface OnboardingScreenProps {
   onComplete: (team: TeamResponse) => void;
 }
 
 type OnboardingStep = 1 | 2 | 3;
-
-// Clean vector icons for onboarding
-const ArrowRightIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 16 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size * 0.7, height: 2, backgroundColor: color }} />
-    <View
-      style={{
-        position: 'absolute',
-        right: 1,
-        width: size * 0.4,
-        height: size * 0.4,
-        borderTopWidth: 2,
-        borderRightWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '45deg' }],
-      }}
-    />
-  </View>
-);
-
-const InfoIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 18 }) => (
-  <View
-    style={{
-      width: size,
-      height: size,
-      borderRadius: size / 2,
-      borderWidth: 1.8,
-      borderColor: color,
-      justifyContent: 'center',
-      alignItems: 'center',
-    }}
-  >
-    <View
-      style={{
-        width: 2,
-        height: 2,
-        backgroundColor: color,
-        borderRadius: 1,
-        marginBottom: 2,
-      }}
-    />
-    <View style={{ width: 2, height: size * 0.35, backgroundColor: color, borderRadius: 1 }} />
-  </View>
-);
 
 export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }) => {
   const { colors, typography } = useTheme();

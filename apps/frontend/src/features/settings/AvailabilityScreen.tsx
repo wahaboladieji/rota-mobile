@@ -12,6 +12,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTheme, titleLargeText, titleMediumText } from '../../theme';
 import { apiRequest } from '../../services/api';
+import { ArrowLeftIcon, PlusIcon, ClockIcon } from '../../components/ReviewIcons';
 
 export interface AvailabilityWindowItem {
   id: string;
@@ -26,75 +27,6 @@ interface AvailabilityScreenProps {
   teamName: string;
   onBack: () => void;
 }
-
-const ArrowLeftIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size * 0.7, height: 2, backgroundColor: color }} />
-    <View
-      style={{
-        position: 'absolute',
-        left: 2,
-        width: size * 0.4,
-        height: size * 0.4,
-        borderTopWidth: 2,
-        borderLeftWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '-45deg' }],
-      }}
-    />
-  </View>
-);
-
-const PlusIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 16 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size, height: 2, backgroundColor: color, borderRadius: 1 }} />
-    <View
-      style={{
-        position: 'absolute',
-        width: 2,
-        height: size,
-        backgroundColor: color,
-        borderRadius: 1,
-      }}
-    />
-  </View>
-);
-
-const Clock3Icon: React.FC<{ color: string; size?: number }> = ({ color, size = 32 }) => (
-  <View
-    style={{
-      width: size,
-      height: size,
-      borderRadius: size / 2,
-      borderWidth: 2,
-      borderColor: color,
-      justifyContent: 'center',
-      alignItems: 'center',
-    }}
-  >
-    <View
-      style={{
-        position: 'absolute',
-        top: size * 0.18,
-        width: 2,
-        height: size * 0.35,
-        backgroundColor: color,
-        borderRadius: 1,
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        left: size * 0.46,
-        top: size * 0.46,
-        width: size * 0.3,
-        height: 2,
-        backgroundColor: color,
-        borderRadius: 1,
-      }}
-    />
-  </View>
-);
 
 const DAYS_OF_WEEK = [
   { name: 'Monday', weekday: 1 },
@@ -200,7 +132,7 @@ export const AvailabilityScreen: React.FC<AvailabilityScreenProps> = ({ teamId, 
                 { backgroundColor: colors.surfaceContainerLow },
               ]}
             >
-              <Clock3Icon color={colors.primary} size={30} />
+              <ClockIcon color={colors.primary} size={30} />
             </View>
             <Text style={[styles.emptyTitle, { color: colors.onSurface }]}>
               No availability set

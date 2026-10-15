@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { useTheme, titleMediumText } from '../../theme';
+import { useTheme } from '../../theme';
 import { ArrowLeftIcon, Repeat2Icon, InfoIcon, WifiOffIcon } from '../../components/ReviewIcons';
 import { StaffShiftItem } from './ShiftDetailsOwnerScreen';
 
@@ -13,6 +13,14 @@ interface ShiftDetailsStaffScreenProps {
   onRequestSwap: (shift: StaffShiftItem) => void;
 }
 
+/**
+ * Shift details · assigned to you.
+ *
+ * Visual language mirrors the "Shift details · assigned to you" screen in
+ * docs/design references/rota-design-review.html: status pill, two-line title,
+ * white detail card (eyebrow + large time + key/value rows), a neutral-99
+ * notice, and a pinned primary footer action.
+ */
 export const ShiftDetailsStaffScreen: React.FC<ShiftDetailsStaffScreenProps> = ({
   shift,
   teamName,
@@ -23,10 +31,18 @@ export const ShiftDetailsStaffScreen: React.FC<ShiftDetailsStaffScreenProps> = (
 }) => {
   const { colors } = useTheme();
 
+  const commaIndex = shift.date.indexOf(', ');
+  const heading =
+    commaIndex === -1
+      ? `${shift.date}.`
+      : `${shift.date.slice(0, commaIndex + 1)}\n${shift.date.slice(commaIndex + 2)}.`;
+
+  const actionsDisabled = isOffline || isRestricted;
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.surfaceContainerLow }]}>
+      <View style={styles.header}>
         <TouchableOpacity
           onPress={onBack}
           style={[
@@ -36,19 +52,21 @@ export const ShiftDetailsStaffScreen: React.FC<ShiftDetailsStaffScreenProps> = (
           activeOpacity={0.7}
           accessibilityLabel="Back"
         >
-          <ArrowLeftIcon color={colors.onSurface} size={18} />
+          <ArrowLeftIcon color={colors.onSurface} size={20} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.onSurfaceVariant }]}>Shift details</Text>
-        <View style={{ width: 40 }} />
+        <View style={{ width: 44 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Offline Banner if Offline */}
+        {/* Offline banner */}
         {isOffline && (
-          <View style={[styles.noticeBox, { backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant, marginBottom: 16 }]}>
-            <WifiOffIcon color={colors.onSurfaceVariant} size={18} />
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={[styles.noticeTitle, { color: colors.onSurface }]}>Offline · saved shift</Text>
+          <View style={[styles.noticeBox, { backgroundColor: colors.surfaceContainerLow, marginBottom: 24 }]}>
+            <WifiOffIcon color={colors.onSurfaceVariant} size={20} />
+            <View style={styles.noticeTextBlock}>
+              <Text style={[styles.noticeTitle, { color: colors.onSurface }]}>
+                Offline · saved shift
+              </Text>
               <Text style={[styles.noticeBody, { color: colors.onSurfaceVariant }]}>
                 Showing your saved shift. Reconnect to get the latest updates.
               </Text>
@@ -56,36 +74,21 @@ export const ShiftDetailsStaffScreen: React.FC<ShiftDetailsStaffScreenProps> = (
           </View>
         )}
 
-        {/* Status Pill */}
-        <View
-          style={[
-            styles.statusPill,
-            {
-              backgroundColor: colors.surfaceContainerLowest,
-              borderColor: colors.outlineVariant,
-            },
-          ]}
-        >
+        {/* Status pill */}
+        <View style={[styles.statusPill, { backgroundColor: colors.surfaceContainerLowest }]}>
           <Text style={[styles.statusPillText, { color: colors.onPrimaryContainer }]}>
             {isOffline ? 'Saved shift' : isRestricted ? 'Read-only' : 'Published'}
           </Text>
         </View>
 
-        <Text style={[styles.heading, { color: colors.onSurface }]}>{shift.date}.</Text>
+        {/* Title */}
+        <Text style={[styles.heading, { color: colors.onSurface }]}>{heading}</Text>
 
-        {/* Shift Details Card */}
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surfaceContainerLowest,
-              borderColor: colors.outlineVariant,
-            },
-          ]}
-        >
+        {/* Detail card */}
+        <View style={[styles.card, { backgroundColor: colors.surfaceContainerLowest }]}>
           <Text style={[styles.eyebrow, { color: colors.onSurfaceVariant }]}>Your shift</Text>
           <Text style={[styles.timeText, { color: colors.onSurface }]}>
-            {shift.startTime} – {shift.endTime}
+            {shift.startTime} <Text style={styles.timeDash}>–</Text> {shift.endTime}
           </Text>
 
           <View style={[styles.kvRow, { borderBottomColor: colors.surfaceContainerLow }]}>
@@ -93,7 +96,7 @@ export const ShiftDetailsStaffScreen: React.FC<ShiftDetailsStaffScreenProps> = (
             <Text style={[styles.kvValue, { color: colors.onSurface }]}>{teamName}</Text>
           </View>
 
-          <View style={[styles.kvRow, { borderBottomColor: 'transparent' }]}>
+          <View style={[styles.kvRow, styles.kvRowLast]}>
             <Text style={[styles.kvLabel, { color: colors.onSurfaceVariant }]}>Assigned to</Text>
             <Text style={[styles.kvValue, { color: colors.onSurface }]}>
               You · {shift.assigneeName}
@@ -101,18 +104,10 @@ export const ShiftDetailsStaffScreen: React.FC<ShiftDetailsStaffScreenProps> = (
           </View>
         </View>
 
-        {/* Notice box */}
-        <View
-          style={[
-            styles.noticeBox,
-            {
-              backgroundColor: colors.surfaceContainerLow,
-              borderColor: colors.outlineVariant,
-            },
-          ]}
-        >
-          <InfoIcon color={colors.onSurfaceVariant} size={18} />
-          <View style={{ flex: 1, marginLeft: 12 }}>
+        {/* Notice */}
+        <View style={[styles.noticeBox, { backgroundColor: colors.neutral99, marginTop: 24 }]}>
+          <InfoIcon color={colors.onSurfaceVariant} size={20} />
+          <View style={styles.noticeTextBlock}>
             <Text style={[styles.noticeTitle, { color: colors.onSurface }]}>
               {isOffline
                 ? 'Connection required'
@@ -131,41 +126,30 @@ export const ShiftDetailsStaffScreen: React.FC<ShiftDetailsStaffScreenProps> = (
         </View>
       </ScrollView>
 
-      {/* Footer: Request a swap button */}
-      <View
-        style={[
-          styles.footer,
-          {
-            backgroundColor: colors.background,
-            borderTopColor: colors.surfaceContainerLow,
-          },
-        ]}
-      >
+      {/* Footer action */}
+      <View style={styles.footer}>
         <TouchableOpacity
           style={[
             styles.primaryButton,
             {
-              backgroundColor: isOffline || isRestricted ? colors.surfaceContainerHigh : colors.primary,
-              opacity: isOffline || isRestricted ? 0.6 : 1,
+              backgroundColor: actionsDisabled ? colors.surfaceContainerHigh : colors.primary,
+              opacity: actionsDisabled ? 0.6 : 1,
             },
           ]}
           onPress={() => onRequestSwap(shift)}
-          disabled={isOffline || isRestricted}
+          disabled={actionsDisabled}
           activeOpacity={0.8}
         >
           <View style={styles.buttonInner}>
             <Text
               style={[
                 styles.primaryButtonText,
-                { color: isOffline || isRestricted ? colors.onSurfaceVariant : colors.onPrimary },
+                { color: actionsDisabled ? colors.onSurfaceVariant : colors.onPrimary },
               ]}
             >
               Request a swap
             </Text>
-            <Repeat2Icon
-              color={isOffline || isRestricted ? colors.onSurfaceVariant : colors.onPrimary}
-              size={18}
-            />
+            <Repeat2Icon color={actionsDisabled ? colors.onSurfaceVariant : colors.onPrimary} size={20} />
           </View>
         </TouchableOpacity>
       </View>
@@ -181,109 +165,133 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    gap: 12,
+    paddingHorizontal: 24,
     paddingTop: 12,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
+    paddingBottom: 16,
   },
   iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 9999,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
   },
   headerTitle: {
-    ...titleMediumText,
     flex: 1,
     textAlign: 'center',
+    fontFamily: 'Roboto_400Regular',
+    fontSize: 14,
+    lineHeight: 21,
   },
   content: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 32,
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
   statusPill: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 16,
+    borderRadius: 9999,
+    marginBottom: 24,
   },
   statusPillText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 12,
+    lineHeight: 18,
   },
   heading: {
     fontFamily: 'Inter_700Bold',
-    fontSize: 28,
-    lineHeight: 34,
-    letterSpacing: -0.5,
-    marginBottom: 20,
+    fontSize: 30,
+    lineHeight: 37.5,
+    letterSpacing: -0.75,
+    marginBottom: 12,
   },
   card: {
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 24,
     padding: 20,
-    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 1,
   },
   eyebrow: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 12,
+    lineHeight: 18,
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
     marginBottom: 8,
   },
   timeText: {
     fontFamily: 'Roboto_700Bold',
-    fontSize: 32,
-    letterSpacing: -0.8,
-    marginBottom: 18,
+    fontSize: 36,
+    lineHeight: 45,
+    letterSpacing: -0.9,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  timeDash: {
+    fontSize: 20,
   },
   kvRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 12,
     paddingVertical: 12,
     borderBottomWidth: 1,
+  },
+  kvRowLast: {
+    borderBottomWidth: 0,
   },
   kvLabel: {
     fontFamily: 'Roboto_400Regular',
     fontSize: 14,
+    lineHeight: 21,
   },
   kvValue: {
-    fontFamily: 'Roboto_500Medium',
+    fontFamily: 'Inter_600SemiBold',
     fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'right',
+    flexShrink: 1,
   },
   noticeBox: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
     padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 16,
+  },
+  noticeTextBlock: {
+    flex: 1,
   },
   noticeTitle: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 14,
+    lineHeight: 21,
     marginBottom: 4,
   },
   noticeBody: {
     fontFamily: 'Roboto_400Regular',
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 21,
   },
   footer: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 28,
-    borderTopWidth: 1,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
   },
   primaryButton: {
-    height: 52,
-    borderRadius: 12,
+    minHeight: 48,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
   buttonInner: {
     flexDirection: 'row',
@@ -292,6 +300,7 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     fontFamily: 'Inter_600SemiBold',
-    fontSize: 16,
+    fontSize: 14,
+    lineHeight: 21,
   },
 });

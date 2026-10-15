@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "866302903890",
+    "project_id": "rota-mobile",
+    "storage_bucket": "rota-mobile.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:866302903890:android:431627f8be14bba3c1418b",
+        "android_client_info": {
+          "package_name": "com.wahab99.rota"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDg8odZQ5VWSXZ1FleEuLdG1_-RVbQvbz0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

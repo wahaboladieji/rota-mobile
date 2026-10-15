@@ -12,68 +12,25 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTheme, titleLargeText, titleMediumText } from '../../theme';
 import { apiRequest } from '../../services/api';
 import { TeamMembersResponse } from '@rota/shared';
+import { StaffShiftItem } from './ShiftDetailsOwnerScreen';
+import { ArrowLeftIcon, ClockIcon } from '../../components/ReviewIcons';
 
 interface CreateShiftScreenProps {
   teamId: string;
+  initialDate?: string;
+  shiftToEdit?: StaffShiftItem;
   onPublish: () => void;
   onBack: () => void;
 }
 
-const ArrowLeftIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size * 0.7, height: 2, backgroundColor: color }} />
-    <View
-      style={{
-        position: 'absolute',
-        left: 2,
-        width: size * 0.4,
-        height: size * 0.4,
-        borderTopWidth: 2,
-        borderLeftWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '-45deg' }],
-      }}
-    />
-  </View>
-);
-
-const ClockIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 18 }) => (
-  <View
-    style={{
-      width: size,
-      height: size,
-      borderRadius: size / 2,
-      borderWidth: 1.8,
-      borderColor: color,
-      justifyContent: 'center',
-      alignItems: 'center',
-    }}
-  >
-    <View
-      style={{
-        position: 'absolute',
-        top: 3,
-        width: 1.8,
-        height: size * 0.35,
-        backgroundColor: color,
-        borderRadius: 1,
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        left: size * 0.42,
-        top: size * 0.42,
-        width: size * 0.28,
-        height: 1.8,
-        backgroundColor: color,
-        borderRadius: 1,
-      }}
-    />
-  </View>
-);
-
-export const CreateShiftScreen: React.FC<CreateShiftScreenProps> = ({ teamId, onPublish, onBack }) => {
+export const CreateShiftScreen: React.FC<CreateShiftScreenProps> = ({
+  teamId,
+  initialDate,
+  shiftToEdit,
+  onPublish,
+  onBack,
+}) => {
+  const isEditing = !!shiftToEdit;
   const { colors } = useTheme();
   const queryClient = useQueryClient();
 
@@ -83,23 +40,39 @@ export const CreateShiftScreen: React.FC<CreateShiftScreenProps> = ({ teamId, on
   });
 
   const members = teamMembersData?.members || [];
-  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
+  const [selectedMemberId, setSelectedMemberId] = useState<string>(shiftToEdit?.assigneeId || '');
 
-  // Default to today's date in YYYY-MM-DD
+  // Default to shiftToEdit date, initialDate or today's date in YYYY-MM-DD
   const todayIso = new Date().toISOString().split('T')[0];
-  const [date, setDate] = useState(todayIso);
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('17:00');
+  const initialDateVal =
+    shiftToEdit?.dateString ||
+    (shiftToEdit?.startAt ? shiftToEdit.startAt.split('T')[0] : '') ||
+    initialDate ||
+    todayIso;
+
+  const [date, setDate] = useState(initialDateVal);
+  const [startTime, setStartTime] = useState(shiftToEdit?.startTime || '09:00');
+  const [endTime, setEndTime] = useState(shiftToEdit?.endTime || '17:00');
   const [publishing, setPublishing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedMemberId && members.length > 0) {
-      // Prefer selecting a staff member if available, otherwise first member
+      if (shiftToEdit?.assigneeName) {
+        const matching = members.find(
+          (m) =>
+            m.email.split('@')[0].toLowerCase() === shiftToEdit.assigneeName.toLowerCase() ||
+            (shiftToEdit.assigneeId && m.userId === shiftToEdit.assigneeId)
+        );
+        if (matching) {
+          setSelectedMemberId(matching.userId);
+          return;
+        }
+      }
       const staffMember = members.find((m) => m.role === 'STAFF') || members[0];
       setSelectedMemberId(staffMember.userId);
     }
-  }, [members, selectedMemberId]);
+  }, [members, selectedMemberId, shiftToEdit]);
 
   const selectedMember = members.find((m) => m.userId === selectedMemberId);
 
@@ -113,21 +86,33 @@ export const CreateShiftScreen: React.FC<CreateShiftScreenProps> = ({ teamId, on
     setErrorMessage(null);
 
     try {
-      await apiRequest(`/api/teams/${teamId}/shifts`, {
-        method: 'POST',
-        body: JSON.stringify({
-          assigneeId: selectedMemberId,
-          startAt: `${date}T${startTime}:00.000Z`,
-          endAt: `${date}T${endTime}:00.000Z`,
-        }),
-        requiresAuth: true,
-      });
+      if (isEditing && shiftToEdit) {
+        await apiRequest(`/api/teams/${teamId}/shifts/${shiftToEdit.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            assigneeId: selectedMemberId,
+            startAt: `${date}T${startTime}:00.000Z`,
+            endAt: `${date}T${endTime}:00.000Z`,
+          }),
+          requiresAuth: true,
+        });
+      } else {
+        await apiRequest(`/api/teams/${teamId}/shifts`, {
+          method: 'POST',
+          body: JSON.stringify({
+            assigneeId: selectedMemberId,
+            startAt: `${date}T${startTime}:00.000Z`,
+            endAt: `${date}T${endTime}:00.000Z`,
+          }),
+          requiresAuth: true,
+        });
+      }
 
       await queryClient.invalidateQueries({ queryKey: ['shifts', teamId] });
       await queryClient.invalidateQueries({ queryKey: ['activity', teamId] });
       onPublish();
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to publish shift. Please check input values.');
+      setErrorMessage(err.message || `Failed to ${isEditing ? 'update' : 'publish'} shift. Please check input values.`);
     } finally {
       setPublishing(false);
     }
@@ -148,12 +133,16 @@ export const CreateShiftScreen: React.FC<CreateShiftScreenProps> = ({ teamId, on
         >
           <ArrowLeftIcon color={colors.onSurface} size={18} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.onSurfaceVariant }]}>Publish shift</Text>
+        <Text style={[styles.headerTitle, { color: colors.onSurfaceVariant }]}>
+          {isEditing ? 'Edit shift' : 'Publish shift'}
+        </Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={[styles.heading, { color: colors.onSurface }]}>Create a shift.</Text>
+        <Text style={[styles.heading, { color: colors.onSurface }]}>
+          {isEditing ? 'Edit shift.' : 'Create a shift.'}
+        </Text>
         <Text style={[styles.lead, { color: colors.onSurfaceVariant }]}>
           Publishing makes this shift visible immediately.
         </Text>
@@ -316,7 +305,7 @@ export const CreateShiftScreen: React.FC<CreateShiftScreenProps> = ({ teamId, on
             <ActivityIndicator color={colors.onPrimary} size="small" />
           ) : (
             <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
-              Publish shift
+              {isEditing ? 'Save changes' : 'Publish shift'}
             </Text>
           )}
         </TouchableOpacity>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,9 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  RefreshControl,
+  Vibration,
+  Alert,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTheme, titleLargeText } from '../../theme';
@@ -57,6 +60,11 @@ import {
   UsersIcon,
   EllipsisIcon,
   UserRoundIcon,
+  BellIcon,
+  CreditCardIcon,
+  ClockIcon,
+  SettingsIcon,
+  ShieldIcon,
 } from '../../components/ReviewIcons';
 import { SwapRequestItem, ShiftItem } from '@rota/shared';
 
@@ -75,6 +83,7 @@ export type OwnerSubScreen =
   | 'INVITE_COLLEAGUE'
   | 'SHIFT_DETAILS_OWNER'
   | 'CREATE_SHIFT'
+  | 'EDIT_SHIFT'
   | 'AVAILABILITY'
   | 'SETTINGS_PREFERENCES'
   | 'ACCOUNT'
@@ -86,6 +95,54 @@ export type OwnerSubScreen =
 interface DashboardScreenProps {
   onLogout: () => void;
   onNavigateToOnboarding: () => void;
+  initialTab?: MainNavTab;
+  initialSubScreen?: OwnerSubScreen;
+}
+
+function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDate(dateString: string): Date {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function getWeekDaysForDate(targetDateString: string) {
+  const baseDate = parseLocalDate(targetDateString);
+  const dayOfWeek = baseDate.getDay(); // 0 is Sun, 1 is Mon...
+  const diffToMonday = (dayOfWeek === 0 ? -6 : 1) - dayOfWeek;
+  const monday = new Date(baseDate);
+  monday.setDate(baseDate.getDate() + diffToMonday);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const todayStr = getLocalDateString();
+  const days = [];
+
+  for (let i = 0; i < 7; i++) {
+    const cur = new Date(monday);
+    cur.setDate(monday.getDate() + i);
+    const dateString = getLocalDateString(cur);
+
+    days.push({
+      date: cur,
+      dateString,
+      day: dayNames[i],
+      num: cur.getDate(),
+      isToday: dateString === todayStr,
+    });
+  }
+
+  const rangeTitle = `${monday.getDate()} ${monday.toLocaleDateString('en-GB', { month: 'short' })} – ${sunday.getDate()} ${sunday.toLocaleDateString('en-GB', { month: 'short' })}`;
+  const yearTitle = `${sunday.getFullYear()}`;
+
+  return { monday, sunday, days, rangeTitle, yearTitle };
 }
 
 const formatShiftItem = (s: ShiftItem): StaffShiftItem => {
@@ -94,6 +151,7 @@ const formatShiftItem = (s: ShiftItem): StaffShiftItem => {
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const dayText = days[start.getDay()];
   const dayNum = String(start.getDate());
+  const dateString = getLocalDateString(start);
   const startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
   const endTime = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
   const date = start.toLocaleDateString('en-GB', {
@@ -106,6 +164,7 @@ const formatShiftItem = (s: ShiftItem): StaffShiftItem => {
 
   return {
     id: s.id,
+    assigneeId: s.assigneeId,
     assigneeName: s.assigneeName || 'Staff Member',
     assigneeRole: s.assigneeRole || 'Staff',
     avatarInitials: (s.assigneeName || 'Staff')
@@ -117,6 +176,9 @@ const formatShiftItem = (s: ShiftItem): StaffShiftItem => {
     date,
     dayText,
     dayNum,
+    dateString,
+    startAt: s.startAt,
+    endAt: s.endAt,
     startTime,
     endTime,
     weeklyAvailability: `${dayText} · ${startTime}–${endTime}`,
@@ -147,21 +209,27 @@ function formatRelativeTime(isoString: string): string {
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   onLogout,
   onNavigateToOnboarding,
+  initialTab,
+  initialSubScreen,
 }) => {
   const { colors } = useTheme();
   const queryClient = useQueryClient();
-  const user = useAuthStore((state) => state.user);
-
-  const displayName = user?.email?.split('@')[0] || 'Owner';
-  const nameParts = displayName.split(/[^a-zA-Z0-9]+/).filter(Boolean);
-  const monogram = (
-    nameParts.length > 1 ? nameParts[0][0] + nameParts[1][0] : displayName.slice(0, 2)
-  ).toUpperCase();
+  const authUser = useAuthStore((state) => state.user);
+  const setAuthUser = useAuthStore((state) => state.setUser);
 
   // Navigation States
-  const [activeTab, setActiveTab] = useState<MainNavTab>('HOME');
-  const [subScreen, setSubScreen] = useState<OwnerSubScreen>('NONE');
+  const [activeTab, setActiveTab] = useState<MainNavTab>(initialTab || 'HOME');
+  const [subScreen, setSubScreen] = useState<OwnerSubScreen>(initialSubScreen || 'NONE');
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+    if (initialSubScreen) {
+      setSubScreen(initialSubScreen);
+    }
+  }, [initialTab, initialSubScreen]);
 
   // Staff Shift Spotlight & Selection States
   const [selectedShift, setSelectedShift] = useState<StaffShiftItem | null>(null);
@@ -170,9 +238,10 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const [selectedPlanCode, setSelectedPlanCode] = useState<PlanCode>('TEAM');
   const [activePaymentAttemptId, setActivePaymentAttemptId] = useState<string | null>(null);
 
-  // Schedule sub-states
+  // Schedule sub-states: Default to current local date
   const [scheduleSubTab, setScheduleSubTab] = useState<'WEEK' | 'MONTH'>('WEEK');
-  const [selectedDayNum, setSelectedDayNum] = useState<number>(12);
+  const [selectedDateString, setSelectedDateString] = useState<string>(getLocalDateString());
+  const [viewingDateString, setViewingDateString] = useState<string>(getLocalDateString());
 
   // Swaps sub-states
   const [swapsSubTab, setSwapsSubTab] = useState<'MY_REQUESTS' | 'FOR_ME'>('MY_REQUESTS');
@@ -180,8 +249,20 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   // Team Switcher Modal
   const [isTeamSwitcherVisible, setIsTeamSwitcherVisible] = useState(false);
 
-  // Account dropdown menu (replaces the removed "More" tab)
+  // Account dropdown menu
   const [isAccountMenuVisible, setIsAccountMenuVisible] = useState(false);
+
+  // In-app Notification Banner State & Activity Unread Dot
+  const [inAppNotification, setInAppNotification] = useState<{
+    id: string;
+    title: string;
+    message: string;
+    shiftId?: string;
+    dateString?: string;
+  } | null>(null);
+  const [hasUnreadActivity, setHasUnreadActivity] = useState(false);
+  const prevShiftIdsRef = useRef<Set<string> | null>(null);
+  const cancelledShiftIdsRef = useRef<Set<string>>(new Set());
 
   // 1. Fetch User Profile & Memberships
   const {
@@ -198,6 +279,23 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     },
   });
 
+  const currentUserId = authUser?.id || meData?.id;
+  const currentUserEmail = authUser?.email || meData?.email;
+  const user = authUser || (meData?.id ? { id: meData.id, email: meData.email } : null);
+
+  // Sync user profile to auth store if meData has resolved
+  useEffect(() => {
+    if (meData?.id && (!authUser || !authUser.id)) {
+      setAuthUser({ id: meData.id, email: meData.email });
+    }
+  }, [meData, authUser, setAuthUser]);
+
+  const displayName = currentUserEmail?.split('@')[0] || 'Member';
+  const nameParts = displayName.split(/[^a-zA-Z0-9]+/).filter(Boolean);
+  const monogram = (
+    nameParts.length > 1 ? nameParts[0][0] + nameParts[1][0] : displayName.slice(0, 2)
+  ).toUpperCase();
+
   const memberships: TeamMembershipSummary[] = meData?.memberships || [];
   const activeMembership =
     memberships.find((m) => m.teamId === selectedTeamId) || memberships[0];
@@ -209,7 +307,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       ? 'Manager'
       : 'Staff';
 
-  // 2. Fetch Team Billing Info (Only when current team exists)
+  // 2. Fetch Team Billing Info
   const {
     data: billingData,
   } = useQuery({
@@ -226,7 +324,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     refetchOnMount: 'always',
   });
 
-  // 3. Fetch Team Members List (both Owner and Staff can view roster)
+  // 3. Fetch Team Members List
   const {
     data: teamMembersData,
     refetch: refetchTeamMembers,
@@ -258,7 +356,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       });
     },
     enabled: !!currentTeamId,
-    staleTime: 30000,
+    staleTime: 60000,
   });
 
   // 5. Fetch Team Swaps
@@ -275,7 +373,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       });
     },
     enabled: !!currentTeamId,
-    staleTime: 10000,
+    staleTime: 60000,
   });
 
   // 6. Fetch Team Activity
@@ -292,8 +390,100 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       });
     },
     enabled: !!currentTeamId,
-    staleTime: 10000,
+    staleTime: 60000,
   });
+
+  // Refetch when user switches tabs and default schedule calendar to today
+  useEffect(() => {
+    if (activeTab === 'SCHEDULE') {
+      const today = getLocalDateString();
+      setSelectedDateString(today);
+      setViewingDateString(today);
+      refetchShifts();
+    } else if (activeTab === 'HOME') {
+      refetchShifts();
+    } else if (activeTab === 'SWAPS') {
+      refetchSwaps();
+    } else if (activeTab === 'ACTIVITY') {
+      refetchActivity();
+    }
+  }, [activeTab]);
+
+  // Live in-app notification when a new shift is published for staff
+  useEffect(() => {
+    if (!teamShiftsData) return;
+    const currentShiftIds = new Set(teamShiftsData.map((s) => s.id));
+
+    if (prevShiftIdsRef.current !== null) {
+      const newShifts = teamShiftsData.filter(
+        (s) => !prevShiftIdsRef.current!.has(s.id) && !cancelledShiftIdsRef.current.has(s.id)
+      );
+      if (newShifts.length > 0) {
+        // Find if any newly published shift belongs to the current user
+        const assignedToMe = newShifts.find(
+          (s) =>
+            s.assigneeId === currentUserId ||
+            (currentUserEmail && s.assigneeName === currentUserEmail.split('@')[0])
+        );
+
+        if (assignedToMe) {
+          const formatted = formatShiftItem(assignedToMe);
+          try {
+            Vibration.vibrate([0, 250, 100, 250]);
+          } catch {}
+
+          setInAppNotification({
+            id: assignedToMe.id,
+            title: 'New Shift Scheduled!',
+            message: `You have been assigned a shift on ${formatted.date} (${formatted.startTime} – ${formatted.endTime}).`,
+            shiftId: assignedToMe.id,
+            dateString: formatted.dateString,
+          });
+          setHasUnreadActivity(true);
+        } else if (activeMembership?.role !== Role.STAFF) {
+          const newest = newShifts[0];
+          const formatted = formatShiftItem(newest);
+          setInAppNotification({
+            id: newest.id,
+            title: 'Shift Published',
+            message: `Shift for ${formatted.assigneeName} on ${formatted.date} (${formatted.startTime} – ${formatted.endTime}) is live.`,
+            shiftId: newest.id,
+            dateString: formatted.dateString,
+          });
+          setHasUnreadActivity(true);
+        }
+      }
+    }
+
+    prevShiftIdsRef.current = currentShiftIds;
+  }, [teamShiftsData, currentUserId, currentUserEmail, activeMembership?.role]);
+
+  // Auto-dismiss in-app notification banner after 7 seconds
+  useEffect(() => {
+    if (inAppNotification) {
+      const timer = setTimeout(() => {
+        setInAppNotification(null);
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [inAppNotification]);
+
+  // Pull-to-refresh handler across screens
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        refetchShifts(),
+        refetchActivity(),
+        refetchSwaps(),
+        refetchTeamMembers(),
+        refetchMe(),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const [selectedSwap, setSelectedSwap] = useState<SwapRequestItem | null>(null);
 
@@ -501,21 +691,67 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         shift={selectedShift}
         teamName={activeMembership.name}
         onBack={() => setSubScreen('NONE')}
-        onEditShift={() => setSubScreen('CREATE_SHIFT')}
+        onEditShift={() => setSubScreen('EDIT_SHIFT')}
         onCancelShift={async () => {
           if (selectedShift?.id) {
+            const shiftIdToDelete = selectedShift.id;
+            cancelledShiftIdsRef.current.add(shiftIdToDelete);
+
+            // 1. Optimistically remove shift from TanStack Query cache so UI reflects immediately
+            if (currentTeamId) {
+              queryClient.setQueryData<ShiftItem[]>(['shifts', currentTeamId], (old) => {
+                if (!old) return [];
+                return old.filter((s) => s.id !== shiftIdToDelete);
+              });
+            }
+
             try {
-              await apiRequest(`/api/teams/${currentTeamId}/shifts/${selectedShift.id}`, {
+              // 2. Execute deletion on the backend (marks CANCELLED on PostgreSQL, cancels swaps, creates activity)
+              await apiRequest(`/api/teams/${currentTeamId}/shifts/${shiftIdToDelete}`, {
                 method: 'DELETE',
                 requiresAuth: true,
               });
-              await queryClient.invalidateQueries({ queryKey: ['shifts', currentTeamId] });
-              await queryClient.invalidateQueries({ queryKey: ['activity', currentTeamId] });
-            } catch (err) {
+
+              // 3. Invalidate all shift and activity queries and refetch authoritative state
+              await queryClient.invalidateQueries({ queryKey: ['shifts'] });
+              await queryClient.invalidateQueries({ queryKey: ['activity'] });
+              await Promise.all([refetchShifts(), refetchActivity()]);
+
+              // 4. Show clear confirmation banner that shift was cancelled
+              setInAppNotification({
+                id: shiftIdToDelete,
+                title: 'Shift Cancelled',
+                message: 'The shift was removed from the schedule.',
+              });
+            } catch (err: any) {
+              cancelledShiftIdsRef.current.delete(shiftIdToDelete);
               console.error('Failed to cancel shift:', err);
+              // Revert optimistic cache removal on error
+              await refetchShifts();
+              Alert.alert('Error', err.message || 'Failed to cancel shift.');
+              throw err;
             }
           }
+          setSelectedShift(null);
           setSubScreen('NONE');
+        }}
+      />
+    );
+  }
+
+  if (subScreen === 'EDIT_SHIFT') {
+    return (
+      <CreateShiftScreen
+        teamId={currentTeamId}
+        shiftToEdit={selectedShift || undefined}
+        onBack={() => setSubScreen('SHIFT_DETAILS_OWNER')}
+        onPublish={async () => {
+          await queryClient.invalidateQueries({ queryKey: ['shifts'] });
+          await queryClient.invalidateQueries({ queryKey: ['activity'] });
+          await Promise.all([refetchShifts(), refetchActivity()]);
+          setSelectedShift(null);
+          setSubScreen('NONE');
+          setActiveTab('SCHEDULE');
         }}
       />
     );
@@ -525,10 +761,12 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     return (
       <CreateShiftScreen
         teamId={currentTeamId}
+        initialDate={selectedDateString}
         onBack={() => setSubScreen('NONE')}
-        onPublish={() => {
-          queryClient.invalidateQueries({ queryKey: ['shifts', currentTeamId] });
-          queryClient.invalidateQueries({ queryKey: ['activity', currentTeamId] });
+        onPublish={async () => {
+          await queryClient.invalidateQueries({ queryKey: ['shifts'] });
+          await queryClient.invalidateQueries({ queryKey: ['activity'] });
+          await Promise.all([refetchShifts(), refetchActivity()]);
           setSubScreen('NONE');
           setActiveTab('SCHEDULE');
         }}
@@ -679,19 +917,34 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       const isRestricted = billingData?.subscription?.status === 'RESTRICTED';
 
       const myShifts = (teamShiftsData || [])
-        .filter((s) => s.status === 'PUBLISHED' && s.assigneeId === user?.id)
+        .filter(
+          (s) =>
+            s.status === 'PUBLISHED' &&
+            (s.assigneeId === currentUserId ||
+              (currentUserEmail && s.assigneeName === currentUserEmail.split('@')[0]))
+        )
         .map(formatShiftItem);
 
       const activeSwaps = (teamSwapsData || []).filter(
         (sw) =>
           ['PENDING_COLLEAGUE', 'PENDING_MANAGER'].includes(sw.status) &&
-          (sw.requesterId === user?.id || sw.colleagueId === user?.id)
+          (sw.requesterId === currentUserId || sw.colleagueId === currentUserId)
       );
 
       // Authentic empty state for staff with no assigned shifts (home-staff-empty)
       if (myShifts.length === 0) {
         return (
-          <ScrollView contentContainerStyle={styles.scrollContent}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                colors={[colors.primary]}
+                tintColor={colors.primary}
+              />
+            }
+          >
             {/* Read-only Restricted banner (restricted-staff) */}
             {isRestricted && (
               <View
@@ -711,7 +964,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             )}
 
             <Text style={[styles.pageHeading, { color: colors.onSurface }]}>
-              Your schedule,{'\n'}in one place.
+              Your schedule, in one place.
             </Text>
             <Text style={[styles.pageLead, { color: colors.onSurfaceVariant }]}>
               Stay up to date with your team.
@@ -723,8 +976,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 styles.emptyContainer,
                 {
                   backgroundColor: colors.surfaceContainerLowest,
-                  borderColor: colors.outlineVariant,
-                  borderWidth: 1,
+                  borderWidth: 0,
                   borderRadius: 24,
                   padding: 24,
                 },
@@ -767,7 +1019,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 styles.listGroup,
                 {
                   backgroundColor: colors.surfaceContainerLowest,
-                  borderColor: colors.outlineVariant,
+                  borderWidth: 0,
                 },
               ]}
             >
@@ -794,7 +1046,17 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       const upcomingShifts = myShifts.slice(1);
 
       return (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
+        >
           {isRestricted && (
             <View
               style={[
@@ -816,57 +1078,41 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             {nextShift.date}
           </Text>
           <Text style={[styles.pageHeading, { color: colors.onSurface }]}>
-            Your day,{'\n'}at a glance.
+            Your day, at a glance.
           </Text>
           <Text style={[styles.pageLead, { color: colors.onSurfaceVariant }]}>
             Your upcoming work, all in one place.
           </Text>
 
-          {/* Next Shift Card */}
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: colors.surfaceContainerLowest,
-                borderColor: colors.outlineVariant,
-              },
-            ]}
-          >
+          {/* Spotlight Card: Your next shift (matching owner's spotlightCard & rota-design-review.html r-next) */}
+          <View style={[styles.spotlightCard, { backgroundColor: colors.primaryContainer }]}>
             <View style={styles.cardHeaderRow}>
-              <Text style={[styles.eyebrow, { color: colors.onSurfaceVariant, marginBottom: 0 }]}>
+              <Text style={[styles.spotlightEyebrow, { color: colors.onPrimaryContainer }]}>
                 Your next shift
               </Text>
-              <View
-                style={[
-                  styles.pillBadge,
-                  { backgroundColor: colors.surfaceContainerLow },
-                ]}
-              >
-                <CalendarDaysIcon color={colors.onPrimaryContainer} size={14} />
-                <Text
-                  style={[
-                    styles.pillBadgeText,
-                    { color: colors.onPrimaryContainer, marginLeft: 4 },
-                  ]}
-                >
-                  {nextShift.dayText} {nextShift.dayNum}
-                </Text>
+              <View style={[styles.pillBadge, { backgroundColor: colors.surfaceContainerLowest }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <CalendarDaysIcon color={colors.onPrimaryContainer} size={13} />
+                  <Text style={[styles.pillBadgeText, { color: colors.onPrimaryContainer }]}>
+                    {nextShift.dateString === getLocalDateString() ? 'Today' : `${nextShift.dayText} ${nextShift.dayNum}`}
+                  </Text>
+                </View>
               </View>
             </View>
 
-            <Text style={[styles.spotlightTime, { color: colors.onSurface, marginTop: 8 }]}>
+            <Text style={[styles.spotlightTime, { color: colors.onPrimaryContainer }]}>
               {nextShift.startTime} – {nextShift.endTime}
             </Text>
-            <Text style={[styles.shiftMeta, { color: colors.onSurfaceVariant }]}>
+            <Text style={[styles.spotlightDate, { color: colors.onPrimaryContainer, opacity: 0.9 }]}>
               {nextShift.date}
             </Text>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14 }}>
-              <UsersIcon color={colors.onSurfaceVariant} size={16} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16 }}>
+              <UsersIcon color={colors.onPrimaryContainer} size={16} />
               <Text
                 style={[
                   styles.footnote,
-                  { color: colors.onSurfaceVariant, marginLeft: 6, marginTop: 0 },
+                  { color: colors.onPrimaryContainer, marginLeft: 8, marginTop: 0, fontWeight: '600' },
                 ]}
               >
                 Assigned to you
@@ -1069,9 +1315,19 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     // If no shifts have been published yet by this owner:
     if (publishedShifts.length === 0) {
       return (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
+        >
           <Text style={[styles.pageHeading, { color: colors.onSurface }]}>
-            Your team schedule{'\n'}starts here.
+            Your team schedule starts here.
           </Text>
           <Text style={[styles.pageLead, { color: colors.onSurfaceVariant }]}>
             Publish shifts for your team members.
@@ -1083,8 +1339,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               styles.emptyContainer,
               {
                 backgroundColor: colors.surfaceContainerLowest,
-                borderColor: colors.outlineVariant,
-                borderWidth: 1,
+                borderWidth: 0,
                 borderRadius: 24,
                 padding: 24,
               },
@@ -1126,7 +1381,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           <View
             style={[
               styles.listGroup,
-              { backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant },
+              { backgroundColor: colors.surfaceContainerLowest, borderWidth: 0 },
             ]}
           >
             <TouchableOpacity
@@ -1157,7 +1412,17 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     const pendingManagerSwaps = (teamSwapsData || []).filter((s) => s.status === 'PENDING_MANAGER');
 
     return (
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+      >
         <Text style={[styles.eyebrow, { color: colors.onSurfaceVariant }]}>
           {spotlightShift.date}
         </Text>
@@ -1313,186 +1578,262 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   // ==========================================
   // Tab 2: SCHEDULE
   // ==========================================
-  const renderScheduleTab = () => (
-    <ScrollView contentContainerStyle={styles.scrollContent}>
-      <View style={styles.headerRow}>
-        <Text style={[styles.pageHeading, { color: colors.onSurface, flex: 1, alignSelf: 'center', marginBottom: 0 }]}>
-          Schedule
-        </Text>
-        {activeMembership.role !== Role.STAFF && (
-          <TouchableOpacity
-            style={[styles.iconButton, { backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant }]}
-            onPress={() => setSubScreen('CREATE_SHIFT')}
-            accessibilityLabel="Create shift"
-          >
-            <PlusIcon color={colors.onSurface} size={18} />
-          </TouchableOpacity>
-        )}
-      </View>
+  const renderScheduleTab = () => {
+    const { days, rangeTitle, yearTitle } = getWeekDaysForDate(viewingDateString);
+    const todayString = getLocalDateString();
+    const isCurrentWeek = days.some((d) => d.isToday);
 
-      <View style={[styles.tabsRow, { backgroundColor: colors.surfaceContainerLow }]}>
-        <TouchableOpacity
-          style={[styles.tabButton, scheduleSubTab === 'WEEK' && styles.tabButtonActive]}
-          onPress={() => setScheduleSubTab('WEEK')}
-        >
-          <Text style={[styles.tabText, { color: scheduleSubTab === 'WEEK' ? colors.onSurface : colors.onSurfaceVariant }]}>
-            Week
+    const publishedShifts = (teamShiftsData || [])
+      .filter((s) => s.status === 'PUBLISHED')
+      .map(formatShiftItem);
+
+    const handlePrevWeek = () => {
+      const prev = parseLocalDate(viewingDateString);
+      prev.setDate(prev.getDate() - 7);
+      const prevStr = getLocalDateString(prev);
+      setViewingDateString(prevStr);
+      setSelectedDateString(prevStr);
+    };
+
+    const handleNextWeek = () => {
+      const next = parseLocalDate(viewingDateString);
+      next.setDate(next.getDate() + 7);
+      const nextStr = getLocalDateString(next);
+      setViewingDateString(nextStr);
+      setSelectedDateString(nextStr);
+    };
+
+    const handleResetToToday = () => {
+      const today = getLocalDateString();
+      setViewingDateString(today);
+      setSelectedDateString(today);
+    };
+
+    const selectedDateObj = parseLocalDate(selectedDateString);
+    const isTodaySelected = selectedDateString === todayString;
+    const dayTitle = selectedDateObj.toLocaleDateString('en-GB', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    const dayShifts = publishedShifts.filter((s) => s.dateString === selectedDateString);
+
+    return (
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        <View style={styles.headerRow}>
+          <Text style={[styles.pageHeading, { color: colors.onSurface, flex: 1, alignSelf: 'center', marginBottom: 0 }]}>
+            Schedule
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tabButton, scheduleSubTab === 'MONTH' && styles.tabButtonActive]}
-          onPress={() => setScheduleSubTab('MONTH')}
-        >
-          <Text style={[styles.tabText, { color: scheduleSubTab === 'MONTH' ? colors.onSurface : colors.onSurfaceVariant }]}>
-            Month
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.sectionRow}>
-        <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>12–18 October</Text>
-        <Text style={[styles.shiftMeta, { color: colors.onSurfaceVariant }]}>2026</Text>
-      </View>
-
-      {/* Days Strip */}
-      <View style={styles.daysStrip}>
-        {[
-          { day: 'Mon', num: 12 },
-          { day: 'Tue', num: 13 },
-          { day: 'Wed', num: 14 },
-          { day: 'Thu', num: 15 },
-          { day: 'Fri', num: 16 },
-          { day: 'Sat', num: 17 },
-          { day: 'Sun', num: 18 },
-        ].map((item) => {
-          const isSelected = selectedDayNum === item.num;
-          return (
+          {activeMembership.role !== Role.STAFF && (
             <TouchableOpacity
-              key={item.num}
-              style={[styles.dayItem, isSelected && { backgroundColor: colors.primary }]}
-              onPress={() => setSelectedDayNum(item.num)}
+              style={[styles.iconButton, { backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant }]}
+              onPress={() => setSubScreen('CREATE_SHIFT')}
+              accessibilityLabel="Create shift"
             >
-              <Text style={[styles.dayText, { color: isSelected ? colors.onPrimary : colors.onSurfaceVariant }]}>
-                {item.day}
-              </Text>
-              <Text style={[styles.dayNum, { color: isSelected ? colors.onPrimary : colors.onSurface }]}>
-                {item.num}
-              </Text>
+              <PlusIcon color={colors.onSurface} size={18} />
             </TouchableOpacity>
-          );
-        })}
-      </View>
+          )}
+        </View>
 
-      {/* Selected Day Staff Shifts */}
-      {(() => {
-        const DAY_LABELS: Record<number, string> = {
-          12: 'Monday, 12 October',
-          13: 'Tuesday, 13 October',
-          14: 'Wednesday, 14 October',
-          15: 'Thursday, 15 October',
-          16: 'Friday, 16 October',
-          17: 'Saturday, 17 October',
-          18: 'Sunday, 18 October',
-        };
+        <View style={[styles.tabsRow, { backgroundColor: colors.surfaceContainerLow }]}>
+          <TouchableOpacity
+            style={[styles.tabButton, scheduleSubTab === 'WEEK' && styles.tabButtonActive]}
+            onPress={() => setScheduleSubTab('WEEK')}
+          >
+            <Text style={[styles.tabText, { color: scheduleSubTab === 'WEEK' ? colors.onSurface : colors.onSurfaceVariant }]}>
+              Week
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabButton, scheduleSubTab === 'MONTH' && styles.tabButtonActive]}
+            onPress={() => setScheduleSubTab('MONTH')}
+          >
+            <Text style={[styles.tabText, { color: scheduleSubTab === 'MONTH' ? colors.onSurface : colors.onSurfaceVariant }]}>
+              Month
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-        const publishedShifts = (teamShiftsData || [])
-          .filter((s) => s.status === 'PUBLISHED')
-          .map(formatShiftItem);
+        {/* Dynamic Week Header with Navigation */}
+        <View style={[styles.sectionRow, { alignItems: 'center' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>{rangeTitle}</Text>
+            <Text style={[styles.shiftMeta, { color: colors.onSurfaceVariant }]}>{yearTitle}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {!isCurrentWeek && (
+              <TouchableOpacity
+                style={[styles.smallPillButton, { backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }]}
+                onPress={handleResetToToday}
+              >
+                <Text style={[styles.smallPillText, { color: colors.primary }]}>Today</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.smallNavArrow, { backgroundColor: colors.surfaceContainerLow }]}
+              onPress={handlePrevWeek}
+              accessibilityLabel="Previous week"
+            >
+              <Text style={[styles.arrowText, { color: colors.onSurface }]}>‹</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.smallNavArrow, { backgroundColor: colors.surfaceContainerLow }]}
+              onPress={handleNextWeek}
+              accessibilityLabel="Next week"
+            >
+              <Text style={[styles.arrowText, { color: colors.onSurface }]}>›</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-        const dayShifts = publishedShifts.filter((s) => s.dayNum === String(selectedDayNum));
-        const dayTitle = DAY_LABELS[selectedDayNum] || `${selectedDayNum} October 2026`;
+        {/* Days Strip */}
+        <View style={styles.daysStrip}>
+          {days.map((item) => {
+            const isSelected = selectedDateString === item.dateString;
+            const hasShift = publishedShifts.some((s) => s.dateString === item.dateString);
 
-        return (
-          <>
-            <View style={styles.sectionRow}>
-              <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>{dayTitle}</Text>
-              {dayShifts.length > 0 && (
-                <View style={[styles.rolePill, { backgroundColor: colors.surfaceContainerLow }]}>
-                  <Text style={[styles.rolePillText, { color: colors.onSurfaceVariant }]}>
-                    {dayShifts.length} {dayShifts.length === 1 ? 'shift' : 'shifts'}
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {dayShifts.length > 0 ? (
-              <View style={styles.stack}>
-                {dayShifts.map((shift) => (
-                  <TouchableOpacity
-                    key={shift.id}
-                    style={[
-                      styles.shiftCard,
-                      {
-                        backgroundColor: colors.surfaceContainerLowest,
-                        borderColor: colors.outlineVariant,
-                      },
-                    ]}
-                    onPress={() => {
-                      setSelectedShift(shift);
-                      setSubScreen(activeMembership.role === Role.STAFF ? 'SHIFT_DETAILS_STAFF' : 'SHIFT_DETAILS_OWNER');
-                    }}
-                  >
-                    <View style={[styles.dateBox, { backgroundColor: colors.surfaceContainerLow }]}>
-                      <Text style={[styles.dateBoxDay, { color: colors.onSurfaceVariant }]}>
-                        {shift.dayText}
-                      </Text>
-                      <Text style={[styles.dateBoxNum, { color: colors.onSurface }]}>
-                        {shift.dayNum}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 14 }}>
-                      <Text style={[styles.shiftTime, { color: colors.onSurface }]}>
-                        {shift.startTime} – {shift.endTime}
-                      </Text>
-                      <Text style={[styles.shiftMeta, { color: colors.onSurfaceVariant }]}>
-                        {shift.assigneeName} · {shift.assigneeRole} · {shift.date}
-                      </Text>
-                    </View>
-                    <ChevronRightIcon color={colors.onSurfaceVariant} size={18} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ) : (
-              <View style={[styles.emptyContainer, { marginTop: 16 }]}>
-                <View style={[styles.emptyIconBox, { backgroundColor: colors.primaryContainer }]}>
-                  <CalendarDaysIcon color={colors.onPrimaryContainer} size={28} />
-                </View>
-                <Text style={[styles.emptyHeading, { color: colors.onSurface }]}>No shifts scheduled</Text>
-                <Text style={[styles.emptySub, { color: colors.onSurfaceVariant, marginBottom: 16 }]}>
-                  {activeMembership.role !== Role.STAFF
-                    ? 'No shifts have been scheduled for this day.'
-                    : 'Choose another day to see your schedule.'}
+            return (
+              <TouchableOpacity
+                key={item.dateString}
+                style={[
+                  styles.dayItem,
+                  isSelected && { backgroundColor: colors.primary },
+                  item.isToday && !isSelected && { borderColor: colors.primary, borderWidth: 1.5 },
+                ]}
+                onPress={() => setSelectedDateString(item.dateString)}
+              >
+                <Text
+                  style={[
+                    styles.dayText,
+                    { color: isSelected ? colors.onPrimary : item.isToday ? colors.primary : colors.onSurfaceVariant },
+                  ]}
+                >
+                  {item.day}
                 </Text>
-                {activeMembership.role !== Role.STAFF && (
-                  <TouchableOpacity
+                <Text
+                  style={[
+                    styles.dayNum,
+                    { color: isSelected ? colors.onPrimary : colors.onSurface },
+                  ]}
+                >
+                  {item.num}
+                </Text>
+                {hasShift && (
+                  <View
                     style={[
-                      styles.primaryButton,
-                      {
-                        backgroundColor: colors.primary,
-                        paddingHorizontal: 24,
-                      },
+                      styles.shiftDot,
+                      { backgroundColor: isSelected ? colors.onPrimary : colors.primary },
                     ]}
-                    onPress={() => setSubScreen('CREATE_SHIFT')}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
-                        Create a shift
-                      </Text>
-                      <PlusIcon color={colors.onPrimary} size={18} />
-                    </View>
-                  </TouchableOpacity>
+                  />
                 )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Selected Day Staff Shifts Header */}
+        <View style={styles.sectionRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: 1 }}>
+            <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>{dayTitle}</Text>
+            {isTodaySelected && (
+              <View style={[styles.todayBadge, { backgroundColor: colors.primaryContainer }]}>
+                <Text style={[styles.todayBadgeText, { color: colors.onPrimaryContainer }]}>Today</Text>
               </View>
             )}
-          </>
-        );
-      })()}
+          </View>
+          {dayShifts.length > 0 && (
+            <View style={[styles.rolePill, { backgroundColor: colors.surfaceContainerLow }]}>
+              <Text style={[styles.rolePillText, { color: colors.onSurfaceVariant }]}>
+                {dayShifts.length} {dayShifts.length === 1 ? 'shift' : 'shifts'}
+              </Text>
+            </View>
+          )}
+        </View>
 
-      <Text style={[styles.footnote, { color: colors.onSurfaceVariant, marginTop: 24 }]}>
-        Last updated today at 08:42
-      </Text>
-    </ScrollView>
-  );
+        {dayShifts.length > 0 ? (
+          <View style={styles.stack}>
+            {dayShifts.map((shift) => (
+              <TouchableOpacity
+                key={shift.id}
+                style={[
+                  styles.shiftCard,
+                  {
+                    backgroundColor: colors.surfaceContainerLowest,
+                    borderColor: colors.surfaceContainerLow,
+                  },
+                ]}
+                onPress={() => {
+                  setSelectedShift(shift);
+                  setSubScreen(activeMembership.role === Role.STAFF ? 'SHIFT_DETAILS_STAFF' : 'SHIFT_DETAILS_OWNER');
+                }}
+              >
+                <View style={[styles.dateBox, { backgroundColor: colors.surfaceContainerLow }]}>
+                  <Text style={[styles.dateBoxDay, { color: colors.onSurfaceVariant }]}>
+                    {shift.dayText}
+                  </Text>
+                  <Text style={[styles.dateBoxNum, { color: colors.onSurface }]}>
+                    {shift.dayNum}
+                  </Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 14 }}>
+                  <Text style={[styles.shiftTime, { color: colors.onSurface }]}>
+                    {shift.startTime} – {shift.endTime}
+                  </Text>
+                  <Text style={[styles.shiftMeta, { color: colors.onSurfaceVariant }]}>
+                    {shift.assigneeName} · {shift.assigneeRole} · {shift.date}
+                  </Text>
+                </View>
+                <ChevronRightIcon color={colors.onSurfaceVariant} size={18} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : (
+          <View style={[styles.emptyContainer, { marginTop: 16 }]}>
+            <View style={[styles.emptyIconBox, { backgroundColor: colors.primaryContainer }]}>
+              <CalendarDaysIcon color={colors.onPrimaryContainer} size={28} />
+            </View>
+            <Text style={[styles.emptyHeading, { color: colors.onSurface }]}>No shifts scheduled</Text>
+            <Text style={[styles.emptySub, { color: colors.onSurfaceVariant, marginBottom: 16 }]}>
+              {activeMembership.role !== Role.STAFF
+                ? 'No shifts have been scheduled for this day.'
+                : 'Choose another day to see your schedule.'}
+            </Text>
+            {activeMembership.role !== Role.STAFF && (
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  {
+                    backgroundColor: colors.primary,
+                    paddingHorizontal: 24,
+                  },
+                ]}
+                onPress={() => setSubScreen('CREATE_SHIFT')}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
+                    Create a shift
+                  </Text>
+                  <PlusIcon color={colors.onPrimary} size={18} />
+                </View>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </ScrollView>
+    );
+  };
 
   // ==========================================
   // Tab 3: SWAPS
@@ -1740,7 +2081,17 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     const activityItems = teamActivityData?.items || [];
 
     return (
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+      >
         <Text style={[styles.pageHeading, { color: colors.onSurface }]}>Activity</Text>
         <Text style={[styles.pageLead, { color: colors.onSurfaceVariant }]}>
           The latest changes from {activeMembership.name}.
@@ -1766,7 +2117,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             </Text>
           </View>
         ) : (
-          <View style={[styles.listGroup, { backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant }]}>
+          <View style={[styles.listGroup, { backgroundColor: colors.surfaceContainerLowest, borderColor: colors.surfaceContainerLow }]}>
             {activityItems.map((event, idx) => {
               const isLast = idx === activityItems.length - 1;
               const timeFormatted = formatRelativeTime(event.createdAt);
@@ -1777,15 +2128,31 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
               if (event.type === 'SHIFT_PUBLISHED' || event.type === 'SHIFT_CREATED') {
                 IconComponent = CalendarDaysIcon;
-                title = 'Shift published';
                 const payload = event.payload as any;
+                const isForMe =
+                  payload?.assigneeId === currentUserId ||
+                  (currentUserEmail && payload?.assigneeEmail === currentUserEmail) ||
+                  (currentUserEmail && payload?.assigneeName === currentUserEmail.split('@')[0]);
+
+                title = payload?.isUpdate
+                  ? (isForMe ? 'Shift updated for you' : 'Shift updated')
+                  : (isForMe ? 'Shift published for you' : 'Shift published');
+
                 subtitle = payload?.assigneeName
                   ? `${timeFormatted} · ${payload.assigneeName}`
                   : `${timeFormatted} · By ${event.actorName}`;
               } else if (event.type === 'SHIFT_CANCELLED') {
                 IconComponent = CalendarDaysIcon;
-                title = 'Shift cancelled';
-                subtitle = `${timeFormatted} · By ${event.actorName}`;
+                const payload = event.payload as any;
+                const isForMe =
+                  payload?.assigneeId === currentUserId ||
+                  (currentUserEmail && payload?.assigneeEmail === currentUserEmail) ||
+                  (currentUserEmail && payload?.assigneeName === currentUserEmail.split('@')[0]);
+
+                title = isForMe ? 'Your shift was cancelled' : 'Shift cancelled';
+                subtitle = payload?.assigneeName
+                  ? `${timeFormatted} · ${payload.assigneeName} by ${event.actorName}`
+                  : `${timeFormatted} · By ${event.actorName}`;
               } else if (event.type === 'SWAP_REQUESTED') {
                 IconComponent = Repeat2Icon;
                 title = 'Swap requested';
@@ -1812,13 +2179,30 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 subtitle = `${timeFormatted} · New team member`;
               }
 
+              const handleItemPress = () => {
+                const payload = event.payload as any;
+                if ((event.type === 'SHIFT_PUBLISHED' || event.type === 'SHIFT_CREATED') && payload?.startAt) {
+                  try {
+                    const shiftDate = getLocalDateString(new Date(payload.startAt));
+                    setSelectedDateString(shiftDate);
+                    setViewingDateString(shiftDate);
+                    setActiveTab('SCHEDULE');
+                  } catch {
+                    setActiveTab('SCHEDULE');
+                  }
+                } else if (event.type.startsWith('SWAP_')) {
+                  setActiveTab('SWAPS');
+                }
+              };
+
               return (
-                <View
+                <TouchableOpacity
                   key={event.id}
                   style={[
                     styles.listRow,
-                    !isLast && { borderBottomWidth: 1, borderBottomColor: colors.outlineVariant },
+                    !isLast && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerLow },
                   ]}
+                  onPress={handleItemPress}
                 >
                   <IconComponent color={colors.primary} size={20} />
                   <View style={{ flex: 1, marginLeft: 14 }}>
@@ -1828,7 +2212,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                     </Text>
                   </View>
                   <ChevronRightIcon color={colors.onSurfaceVariant} size={18} />
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -1850,28 +2234,28 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
   const accountMenuItems: Array<{
     key: OwnerSubScreen;
-    icon: string;
+    Icon: React.FC<{ color: string; size?: number }>;
     title: string;
     subtitle: string;
   }> = isStaff
     ? [
-        { key: 'STAFF_TEAM', icon: '👥', title: 'Team', subtitle: 'Your team membership' },
-        { key: 'AVAILABILITY', icon: '🕒', title: 'Availability', subtitle: 'Your weekly availability' },
-        { key: 'SETTINGS_PREFERENCES', icon: '⚙️', title: 'Settings', subtitle: 'Notifications and preferences' },
-        { key: 'ACCOUNT', icon: '🛡️', title: 'Account', subtitle: 'Sign-in and device sessions' },
+        { key: 'STAFF_TEAM', Icon: UsersIcon, title: 'Team', subtitle: 'Your team membership' },
+        { key: 'AVAILABILITY', Icon: ClockIcon, title: 'Availability', subtitle: 'Your weekly availability' },
+        { key: 'SETTINGS_PREFERENCES', Icon: SettingsIcon, title: 'Settings', subtitle: 'Notifications and preferences' },
+        { key: 'ACCOUNT', Icon: ShieldIcon, title: 'Account', subtitle: 'Sign-in and device sessions' },
       ]
     : [
-        { key: 'OWNER_TEAM', icon: '👥', title: 'Team', subtitle: 'Members and invitations' },
-        { key: 'BILLING_OVERVIEW', icon: '💳', title: 'Billing', subtitle: 'Plan, seats and payment status' },
-        { key: 'AVAILABILITY', icon: '🕒', title: 'Availability', subtitle: 'Your weekly availability' },
-        { key: 'SETTINGS_PREFERENCES', icon: '⚙️', title: 'Settings', subtitle: 'Notifications and preferences' },
-        { key: 'ACCOUNT', icon: '🛡️', title: 'Account', subtitle: 'Sign-in and device sessions' },
+        { key: 'OWNER_TEAM', Icon: UsersIcon, title: 'Team', subtitle: 'Members and invitations' },
+        { key: 'BILLING_OVERVIEW', Icon: CreditCardIcon, title: 'Billing', subtitle: 'Plan, seats and payment status' },
+        { key: 'AVAILABILITY', Icon: ClockIcon, title: 'Availability', subtitle: 'Your weekly availability' },
+        { key: 'SETTINGS_PREFERENCES', Icon: SettingsIcon, title: 'Settings', subtitle: 'Notifications and preferences' },
+        { key: 'ACCOUNT', Icon: ShieldIcon, title: 'Account', subtitle: 'Sign-in and device sessions' },
       ];
 
   const renderMoreTab = () => (
     <ScrollView contentContainerStyle={styles.scrollContent}>
       <Text style={[styles.pageHeading, { color: colors.onSurface }]}>
-        Your team{'\n'}& account.
+        Your team & account.
       </Text>
 
       {/* User profile card */}
@@ -1880,7 +2264,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           styles.card,
           {
             backgroundColor: colors.surfaceContainerLowest,
-            borderColor: colors.outlineVariant,
+            borderColor: colors.surfaceContainerLow,
             marginBottom: 20,
           },
         ]}
@@ -1920,40 +2304,40 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           styles.listGroup,
           {
             backgroundColor: colors.surfaceContainerLowest,
-            borderColor: colors.outlineVariant,
+            borderWidth: 0,
           },
         ]}
       >
         {accountMenuItems.map((item, index) => (
-          <TouchableOpacity
-            key={item.key}
-            style={[
-              styles.listRow,
-              index < accountMenuItems.length - 1 && {
-                borderBottomWidth: 1,
-                borderBottomColor: colors.outlineVariant,
-              },
-            ]}
-            onPress={async () => {
-              if (item.key === 'OWNER_TEAM') {
-                await queryClient.invalidateQueries({ queryKey: ['team-members', currentTeamId] });
-                await queryClient.invalidateQueries({ queryKey: ['team-billing', currentTeamId] });
-                await refetchTeamMembers();
-              }
-              setSubScreen(item.key);
-            }}
-          >
-            <View style={styles.menuIconContainer}>
-              <Text style={{ fontSize: 18 }}>{item.icon}</Text>
-            </View>
-            <View style={{ flex: 1, marginLeft: 14 }}>
-              <Text style={[styles.listTitle, { color: colors.onSurface }]}>{item.title}</Text>
-              <Text style={[styles.listSubtitle, { color: colors.onSurfaceVariant }]}>
-                {item.subtitle}
-              </Text>
-            </View>
-            <ChevronRightIcon color={colors.onSurfaceVariant} size={18} />
-          </TouchableOpacity>
+          <View key={item.key}>
+            <TouchableOpacity
+              style={styles.listRow}
+              onPress={async () => {
+                if (item.key === 'OWNER_TEAM') {
+                  await queryClient.invalidateQueries({ queryKey: ['team-members', currentTeamId] });
+                  await queryClient.invalidateQueries({ queryKey: ['team-billing', currentTeamId] });
+                  await refetchTeamMembers();
+                }
+                setSubScreen(item.key);
+              }}
+            >
+              <View style={styles.menuIconContainer}>
+                <item.Icon color={colors.onSurfaceVariant} size={20} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 14 }}>
+                <Text style={[styles.listTitle, { color: colors.onSurface }]}>{item.title}</Text>
+                <Text style={[styles.listSubtitle, { color: colors.onSurfaceVariant }]}>
+                  {item.subtitle}
+                </Text>
+              </View>
+              <ChevronRightIcon color={colors.onSurfaceVariant} size={18} />
+            </TouchableOpacity>
+            {index < accountMenuItems.length - 1 && (
+              <View
+                style={[styles.insetDivider, { backgroundColor: colors.surfaceContainerLow }]}
+              />
+            )}
+          </View>
         ))}
       </View>
     </ScrollView>
@@ -2015,7 +2399,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               }}
             >
               <View style={styles.menuIconContainer}>
-                <Text style={{ fontSize: 18 }}>{item.icon}</Text>
+                <item.Icon color={colors.onSurfaceVariant} size={20} />
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={[styles.listTitle, { color: colors.onSurface }]}>{item.title}</Text>
@@ -2090,6 +2474,43 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {renderHeader()}
 
+      {/* Real-time In-App Notification Toast */}
+      {inAppNotification && (
+        <View style={styles.inAppNotificationContainer}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            style={[styles.inAppNotificationBanner, { backgroundColor: colors.primary }]}
+            onPress={() => {
+              if (inAppNotification.dateString) {
+                setSelectedDateString(inAppNotification.dateString);
+                setViewingDateString(inAppNotification.dateString);
+              }
+              setActiveTab('SCHEDULE');
+              setInAppNotification(null);
+            }}
+          >
+            <View style={styles.notificationIconBox}>
+              <BellIcon color={colors.onPrimary} size={18} />
+            </View>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={[styles.notificationTitle, { color: colors.onPrimary }]}>
+                {inAppNotification.title}
+              </Text>
+              <Text style={[styles.notificationMessage, { color: colors.onPrimary }]} numberOfLines={2}>
+                {inAppNotification.message}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setInAppNotification(null)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={styles.notificationCloseButton}
+            >
+              <Text style={[styles.notificationCloseText, { color: colors.onPrimary }]}>✕</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={styles.mainContent}>
         {activeTab === 'HOME' && renderHomeTab()}
         {activeTab === 'SCHEDULE' && renderScheduleTab()}
@@ -2107,6 +2528,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               key={tab.id}
               style={styles.navButton}
               onPress={() => {
+                if (tab.id === 'SCHEDULE') {
+                  const todayStr = getLocalDateString();
+                  setSelectedDateString(todayStr);
+                  setViewingDateString(todayStr);
+                  refetchShifts();
+                }
+                if (tab.id === 'ACTIVITY') {
+                  setHasUnreadActivity(false);
+                }
                 setActiveTab(tab.id);
                 setSubScreen('NONE');
               }}
@@ -2119,6 +2549,9 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 ]}
               >
                 {tab.icon}
+                {tab.id === 'ACTIVITY' && hasUnreadActivity && (
+                  <View style={styles.unreadBadgeDot} />
+                )}
               </View>
               <Text
                 style={[
@@ -2204,6 +2637,7 @@ const styles = StyleSheet.create({
   teamButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 1,
     gap: 8,
   },
   mark: {
@@ -2220,6 +2654,7 @@ const styles = StyleSheet.create({
   teamName: {
     fontSize: 15,
     fontWeight: '700',
+    flexShrink: 1,
   },
   rolePill: {
     paddingHorizontal: 10,
@@ -2252,7 +2687,9 @@ const styles = StyleSheet.create({
   },
   pageHeading: {
     ...titleLargeText,
+    width: '100%',
     alignSelf: 'stretch',
+    flexShrink: 1,
     marginBottom: 8,
   },
   pageLead: {
@@ -2381,6 +2818,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 18,
     paddingVertical: 16,
+  },
+  insetDivider: {
+    height: 1,
+    marginLeft: 64,
   },
   listTitle: {
     fontSize: 15,
@@ -2678,5 +3119,108 @@ const styles = StyleSheet.create({
   rosterFilterText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  headerIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  unreadHeaderBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#BA1A1A',
+  },
+  smallPillButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 9999,
+    borderWidth: 1,
+  },
+  smallPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  smallNavArrow: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  arrowText: {
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  shiftDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginTop: 3,
+  },
+  todayBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  todayBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  inAppNotificationContainer: {
+    position: 'absolute',
+    top: 58,
+    left: 12,
+    right: 12,
+    zIndex: 9999,
+    elevation: 10,
+  },
+  inAppNotificationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  notificationIconBox: {
+    marginRight: 10,
+  },
+  notificationTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  notificationMessage: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  notificationCloseButton: {
+    padding: 4,
+    marginLeft: 6,
+  },
+  notificationCloseText: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  unreadBadgeDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#BA1A1A',
   },
 });

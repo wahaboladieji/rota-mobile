@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useTheme, titleLargeText, titleMediumText } from '../../theme';
 import { PlanCode, PLANS } from '@rota/shared';
+import { CheckIcon, ArrowLeftIcon } from '../../components/ReviewIcons';
 
 interface PlanSelectionScreenProps {
   selectedPlan: PlanCode;
@@ -9,41 +10,6 @@ interface PlanSelectionScreenProps {
   onContinue: (plan: PlanCode) => void;
   onBack: () => void;
 }
-
-// Checkmark vector icon
-const CheckIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 18 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View
-      style={{
-        width: size * 0.35,
-        height: size * 0.7,
-        borderBottomWidth: 2.2,
-        borderRightWidth: 2.2,
-        borderColor: color,
-        transform: [{ rotate: '45deg' }],
-        marginTop: -2,
-      }}
-    />
-  </View>
-);
-
-const ArrowLeftIcon: React.FC<{ color: string; size?: number }> = ({ color, size = 20 }) => (
-  <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-    <View style={{ width: size * 0.7, height: 2, backgroundColor: color }} />
-    <View
-      style={{
-        position: 'absolute',
-        left: 2,
-        width: size * 0.4,
-        height: size * 0.4,
-        borderTopWidth: 2,
-        borderLeftWidth: 2,
-        borderColor: color,
-        transform: [{ rotate: '-45deg' }],
-      }}
-    />
-  </View>
-);
 
 export const PlanSelectionScreen: React.FC<PlanSelectionScreenProps> = ({
   selectedPlan,
