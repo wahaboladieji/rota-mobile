@@ -13,7 +13,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTheme, titleLargeText, titleMediumText } from '../../theme';
 import { Role } from '@rota/shared';
 import { apiRequest } from '../../services/api';
-import { ArrowLeftIcon, LinkIcon, InfoIcon } from '../../components/ReviewIcons';
+import { useRateLimitCountdown } from '../../services/useRateLimitCountdown';
+import { ArrowLeftIcon, LinkIcon, InfoIcon, CheckIcon } from '../../components/ReviewIcons';
 
 interface InviteColleagueScreenProps {
   teamId: string;
@@ -38,9 +39,11 @@ export const InviteColleagueScreen: React.FC<InviteColleagueScreenProps> = ({
   const queryClient = useQueryClient();
 
   const [tab, setTab] = useState<'EMAIL' | 'LINK'>('EMAIL');
+  const [selectedRole, setSelectedRole] = useState<Role>(Role.STAFF);
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const rateLimit = useRateLimitCountdown('Too many invitations sent from this team. Please try again in');
   const [linkReady, setLinkReady] = useState(false);
   const [emailSentSuccess, setEmailSentSuccess] = useState(false);
   const [createdInviteId, setCreatedInviteId] = useState<string | null>(null);
@@ -68,7 +71,7 @@ export const InviteColleagueScreen: React.FC<InviteColleagueScreenProps> = ({
         requiresAuth: true,
         body: JSON.stringify({
           email: email.trim() || undefined,
-          role: Role.STAFF,
+          role: selectedRole,
         }),
       });
 
@@ -86,7 +89,9 @@ export const InviteColleagueScreen: React.FC<InviteColleagueScreenProps> = ({
         setEmailSentSuccess(true);
       }
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to create invitation');
+      if (!rateLimit.handleApiError(err)) {
+        setErrorMessage(err instanceof Error ? err.message : 'Failed to create invitation');
+      }
     } finally {
       setLoading(false);
     }
@@ -156,7 +161,7 @@ export const InviteColleagueScreen: React.FC<InviteColleagueScreenProps> = ({
           >
             <Text style={[styles.cardTitle, { color: colors.onSurface }]}>{teamName}</Text>
             <Text style={[styles.cardSub, { color: colors.onSurfaceVariant }]}>
-              Staff invitation · Email sent
+              {selectedRole === Role.MANAGER ? 'Manager' : 'Staff'} invitation · Email sent
             </Text>
             <Text style={[styles.smallCaption, { color: colors.onSurfaceVariant, marginTop: 4 }]}>
               Single-use link valid for 7 days
@@ -276,7 +281,7 @@ export const InviteColleagueScreen: React.FC<InviteColleagueScreenProps> = ({
           >
             <Text style={[styles.cardTitle, { color: colors.onSurface }]}>{teamName}</Text>
             <Text style={[styles.cardSub, { color: colors.onSurfaceVariant }]}>
-              Staff invitation · Pending
+              {selectedRole === Role.MANAGER ? 'Manager' : 'Staff'} invitation · Pending
             </Text>
             <Text style={[styles.smallCaption, { color: colors.onSurfaceVariant, marginTop: 4 }]}>
               Single-use link · Share with one colleague
@@ -379,10 +384,7 @@ export const InviteColleagueScreen: React.FC<InviteColleagueScreenProps> = ({
           <TouchableOpacity
             style={[
               styles.tabItem,
-              tab === 'EMAIL' && [
-                styles.activeTabItem,
-                { backgroundColor: colors.surfaceContainerLowest },
-              ],
+              tab === 'EMAIL' && { backgroundColor: colors.surfaceContainerLowest },
             ]}
             onPress={() => setTab('EMAIL')}
             activeOpacity={0.7}
@@ -400,10 +402,7 @@ export const InviteColleagueScreen: React.FC<InviteColleagueScreenProps> = ({
           <TouchableOpacity
             style={[
               styles.tabItem,
-              tab === 'LINK' && [
-                styles.activeTabItem,
-                { backgroundColor: colors.surfaceContainerLowest },
-              ],
+              tab === 'LINK' && { backgroundColor: colors.surfaceContainerLowest },
             ]}
             onPress={() => setTab('LINK')}
             activeOpacity={0.7}
@@ -417,6 +416,182 @@ export const InviteColleagueScreen: React.FC<InviteColleagueScreenProps> = ({
               Shareable link
             </Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Role Selection */}
+        <View style={styles.fieldContainer}>
+          <Text style={[styles.fieldLabel, { color: colors.onSurface }]}>Team role</Text>
+          <View style={styles.roleOptionsContainer}>
+            {/* Staff Option */}
+            <TouchableOpacity
+              style={[
+                styles.roleOptionCard,
+                {
+                  backgroundColor:
+                    selectedRole === Role.STAFF
+                      ? colors.primaryContainer
+                      : colors.surfaceContainerLowest,
+                  borderColor:
+                    selectedRole === Role.STAFF ? colors.primary : colors.outlineVariant,
+                },
+              ]}
+              onPress={() => setSelectedRole(Role.STAFF)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.roleCardTop}>
+                <View
+                  style={[
+                    styles.roleBadge,
+                    {
+                      backgroundColor:
+                        selectedRole === Role.STAFF
+                          ? colors.primary
+                          : colors.surfaceContainerHigh,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.roleBadgeText,
+                      {
+                        color:
+                          selectedRole === Role.STAFF
+                            ? colors.onPrimary
+                            : colors.onSurfaceVariant,
+                      },
+                    ]}
+                  >
+                    S
+                  </Text>
+                </View>
+                <View style={styles.roleCardTitleContainer}>
+                  <Text
+                    style={[
+                      styles.roleCardTitle,
+                      {
+                        color:
+                          selectedRole === Role.STAFF
+                            ? colors.onPrimaryContainer
+                            : colors.onSurface,
+                      },
+                    ]}
+                  >
+                    Staff
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.radioIndicator,
+                    selectedRole === Role.STAFF
+                      ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                      : { borderColor: colors.outlineVariant },
+                  ]}
+                >
+                  {selectedRole === Role.STAFF && (
+                    <CheckIcon color={colors.onPrimary} size={12} />
+                  )}
+                </View>
+              </View>
+              <Text
+                style={[
+                  styles.roleCardDesc,
+                  {
+                    color:
+                      selectedRole === Role.STAFF
+                        ? colors.onPrimaryContainer
+                        : colors.onSurfaceVariant,
+                  },
+                ]}
+              >
+                Views assigned shifts, requests swaps, and sets availability.
+              </Text>
+            </TouchableOpacity>
+
+            {/* Manager Option */}
+            <TouchableOpacity
+              style={[
+                styles.roleOptionCard,
+                {
+                  backgroundColor:
+                    selectedRole === Role.MANAGER
+                      ? colors.primaryContainer
+                      : colors.surfaceContainerLowest,
+                  borderColor:
+                    selectedRole === Role.MANAGER ? colors.primary : colors.outlineVariant,
+                },
+              ]}
+              onPress={() => setSelectedRole(Role.MANAGER)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.roleCardTop}>
+                <View
+                  style={[
+                    styles.roleBadge,
+                    {
+                      backgroundColor:
+                        selectedRole === Role.MANAGER
+                          ? colors.primary
+                          : colors.surfaceContainerHigh,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.roleBadgeText,
+                      {
+                        color:
+                          selectedRole === Role.MANAGER
+                            ? colors.onPrimary
+                            : colors.onSurfaceVariant,
+                      },
+                    ]}
+                  >
+                    M
+                  </Text>
+                </View>
+                <View style={styles.roleCardTitleContainer}>
+                  <Text
+                    style={[
+                      styles.roleCardTitle,
+                      {
+                        color:
+                          selectedRole === Role.MANAGER
+                            ? colors.onPrimaryContainer
+                            : colors.onSurface,
+                      },
+                    ]}
+                  >
+                    Manager
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.radioIndicator,
+                    selectedRole === Role.MANAGER
+                      ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                      : { borderColor: colors.outlineVariant },
+                  ]}
+                >
+                  {selectedRole === Role.MANAGER && (
+                    <CheckIcon color={colors.onPrimary} size={12} />
+                  )}
+                </View>
+              </View>
+              <Text
+                style={[
+                  styles.roleCardDesc,
+                  {
+                    color:
+                      selectedRole === Role.MANAGER
+                        ? colors.onPrimaryContainer
+                        : colors.onSurfaceVariant,
+                  },
+                ]}
+              >
+                Publishes shifts and approves accepted swap requests.
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Input Field */}
@@ -474,7 +649,7 @@ export const InviteColleagueScreen: React.FC<InviteColleagueScreenProps> = ({
           billed.
         </Text>
 
-        {errorMessage ? (
+        {rateLimit.isRateLimited || errorMessage ? (
           <View
             style={[
               styles.noticeBox,
@@ -490,7 +665,7 @@ export const InviteColleagueScreen: React.FC<InviteColleagueScreenProps> = ({
                 Could not send invitation
               </Text>
               <Text style={[styles.noticeBody, { color: colors.onErrorContainer }]}>
-                {errorMessage}
+                {rateLimit.isRateLimited ? rateLimit.formattedMessage : errorMessage}
               </Text>
             </View>
           </View>
@@ -503,17 +678,21 @@ export const InviteColleagueScreen: React.FC<InviteColleagueScreenProps> = ({
           style={[
             styles.primaryButton,
             { backgroundColor: colors.primary },
-            loading && { opacity: 0.7 },
+            (loading || rateLimit.isRateLimited) && { opacity: 0.7 },
           ]}
           onPress={handleCreateInvite}
-          disabled={loading}
+          disabled={loading || rateLimit.isRateLimited}
           activeOpacity={0.8}
         >
           {loading ? (
             <ActivityIndicator size="small" color={colors.onPrimary} />
           ) : (
             <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
-              {tab === 'EMAIL' ? 'Create email invitation' : 'Create invitation link'}
+              {rateLimit.isRateLimited
+                ? `Try again in ${rateLimit.secondsRemaining}s`
+                : tab === 'EMAIL'
+                ? `Send ${selectedRole === Role.MANAGER ? 'Manager' : 'Staff'} invitation`
+                : `Create ${selectedRole === Role.MANAGER ? 'Manager' : 'Staff'} link`}
             </Text>
           )}
         </TouchableOpacity>
@@ -574,13 +753,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  activeTabItem: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
   tabText: {
     fontSize: 13,
@@ -684,5 +856,49 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  roleOptionsContainer: {
+    gap: 12,
+  },
+  roleOptionCard: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 16,
+  },
+  roleCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  roleBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  roleBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  roleCardTitleContainer: {
+    flex: 1,
+  },
+  roleCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  radioIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  roleCardDesc: {
+    fontSize: 13,
+    lineHeight: 18,
   },
 });

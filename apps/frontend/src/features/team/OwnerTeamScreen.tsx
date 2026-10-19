@@ -11,8 +11,9 @@ import {
 } from 'react-native';
 import { useTheme, titleLargeText, titleMediumText } from '../../theme';
 import { useQueryClient } from '@tanstack/react-query';
-import { TeamMembersResponse, TeamMemberItem, PendingInvitationItem } from '@rota/shared';
+import { TeamMembersResponse, TeamMemberItem, PendingInvitationItem, Role } from '@rota/shared';
 import { apiRequest } from '../../services/api';
+import { InsetDivider } from '../../components/InsetDivider';
 import {
   ArrowLeftIcon,
   PlusIcon,
@@ -24,6 +25,7 @@ import {
 interface OwnerTeamScreenProps {
   teamId: string;
   data: TeamMembersResponse;
+  userRole?: Role;
   onInvite: () => void;
   onRefresh: () => void;
   onBack: () => void;
@@ -32,11 +34,13 @@ interface OwnerTeamScreenProps {
 export const OwnerTeamScreen: React.FC<OwnerTeamScreenProps> = ({
   teamId,
   data,
+  userRole,
   onInvite,
   onRefresh,
   onBack,
 }) => {
   const { colors } = useTheme();
+  const isOwner = !userRole || userRole === Role.OWNER;
 
   const queryClient = useQueryClient();
 
@@ -159,7 +163,6 @@ export const OwnerTeamScreen: React.FC<OwnerTeamScreenProps> = ({
               styles.statCard,
               {
                 backgroundColor: colors.surfaceContainerLowest,
-                borderColor: colors.outlineVariant,
               },
             ]}
           >
@@ -176,7 +179,6 @@ export const OwnerTeamScreen: React.FC<OwnerTeamScreenProps> = ({
               styles.statCard,
               {
                 backgroundColor: colors.surfaceContainerLowest,
-                borderColor: colors.outlineVariant,
               },
             ]}
           >
@@ -199,7 +201,6 @@ export const OwnerTeamScreen: React.FC<OwnerTeamScreenProps> = ({
             styles.listGroup,
             {
               backgroundColor: colors.surfaceContainerLowest,
-              borderColor: colors.surfaceContainerLow,
             },
           ]}
         >
@@ -209,33 +210,32 @@ export const OwnerTeamScreen: React.FC<OwnerTeamScreenProps> = ({
             const roleLabel = member.role.charAt(0) + member.role.slice(1).toLowerCase();
 
             return (
-              <TouchableOpacity
-                key={member.id}
-                style={[
-                  styles.listRow,
-                  !isLast && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerLow },
-                ]}
-                onPress={() => {
-                  if (!member.isSelf) {
-                    setSelectedMember(member);
-                  }
-                }}
-                disabled={member.isSelf}
-                activeOpacity={0.7}
-              >
-                <UserRoundIcon color={colors.onSurfaceVariant} size={20} />
-                <View style={styles.rowInfo}>
-                  <Text style={[styles.rowTitle, { color: colors.onSurface }]}>
-                    {displayName}
-                  </Text>
-                  <Text style={[styles.rowSub, { color: colors.onSurfaceVariant }]}>
-                    {roleLabel}
-                  </Text>
-                </View>
-                {!member.isSelf && (
-                  <ChevronRightIcon color={colors.onSurfaceVariant} size={16} />
-                )}
-              </TouchableOpacity>
+              <View key={member.id}>
+                <TouchableOpacity
+                  style={styles.listRow}
+                  onPress={() => {
+                    if (!member.isSelf) {
+                      setSelectedMember(member);
+                    }
+                  }}
+                  disabled={member.isSelf}
+                  activeOpacity={0.7}
+                >
+                  <UserRoundIcon color={colors.onSurfaceVariant} size={20} />
+                  <View style={styles.rowInfo}>
+                    <Text style={[styles.rowTitle, { color: colors.onSurface }]}>
+                      {displayName}
+                    </Text>
+                    <Text style={[styles.rowSub, { color: colors.onSurfaceVariant }]}>
+                      {roleLabel}
+                    </Text>
+                  </View>
+                  {!member.isSelf && (
+                    <ChevronRightIcon color={colors.onSurfaceVariant} size={16} />
+                  )}
+                </TouchableOpacity>
+                {!isLast && <InsetDivider inset={50} />}
+              </View>
             );
           })}
         </View>
@@ -254,36 +254,31 @@ export const OwnerTeamScreen: React.FC<OwnerTeamScreenProps> = ({
                 styles.listGroup,
                 {
                   backgroundColor: colors.surfaceContainerLowest,
-                  borderColor: colors.surfaceContainerLow,
                 },
               ]}
             >
               {pendingInvitations.map((inv, idx) => {
                 const isLast = idx === pendingInvitations.length - 1;
                 return (
-                  <TouchableOpacity
-                    key={inv.id}
-                    style={[
-                      styles.listRow,
-                      !isLast && {
-                        borderBottomWidth: 1,
-                        borderBottomColor: colors.surfaceContainerLow,
-                      },
-                    ]}
-                    onPress={() => setSelectedInvitation(inv)}
-                    activeOpacity={0.7}
-                  >
-                    <MailIcon color={colors.onSurfaceVariant} size={20} />
-                    <View style={styles.rowInfo}>
-                      <Text style={[styles.rowTitle, { color: colors.onSurface }]}>
-                        {inv.email || 'Single-use link invitation'}
-                      </Text>
-                      <Text style={[styles.rowSub, { color: colors.onSurfaceVariant }]}>
-                        Pending · Reserves one place
-                      </Text>
-                    </View>
-                    <ChevronRightIcon color={colors.onSurfaceVariant} size={16} />
-                  </TouchableOpacity>
+                  <View key={inv.id}>
+                    <TouchableOpacity
+                      style={styles.listRow}
+                      onPress={() => setSelectedInvitation(inv)}
+                      activeOpacity={0.7}
+                    >
+                      <MailIcon color={colors.onSurfaceVariant} size={20} />
+                      <View style={styles.rowInfo}>
+                        <Text style={[styles.rowTitle, { color: colors.onSurface }]}>
+                          {inv.email || 'Single-use link invitation'}
+                        </Text>
+                        <Text style={[styles.rowSub, { color: colors.onSurfaceVariant }]}>
+                          Pending · Reserves one place
+                        </Text>
+                      </View>
+                      <ChevronRightIcon color={colors.onSurfaceVariant} size={16} />
+                    </TouchableOpacity>
+                    {!isLast && <InsetDivider inset={50} />}
+                  </View>
                 );
               })}
             </View>
@@ -385,20 +380,22 @@ export const OwnerTeamScreen: React.FC<OwnerTeamScreenProps> = ({
                 </View>
 
                 <View style={styles.modalButtonStack}>
-                  <TouchableOpacity
-                    style={[
-                      styles.secondaryButton,
-                      {
-                        backgroundColor: colors.surfaceContainerLowest,
-                        borderColor: colors.error,
-                      },
-                    ]}
-                    onPress={() => setIsMemberRemoveSheet(true)}
-                  >
-                    <Text style={[styles.secondaryButtonText, { color: colors.error }]}>
-                      Remove member
-                    </Text>
-                  </TouchableOpacity>
+                  {isOwner && (
+                    <TouchableOpacity
+                      style={[
+                        styles.secondaryButton,
+                        {
+                          backgroundColor: colors.surfaceContainerLowest,
+                          borderColor: colors.error,
+                        },
+                      ]}
+                      onPress={() => setIsMemberRemoveSheet(true)}
+                    >
+                      <Text style={[styles.secondaryButtonText, { color: colors.error }]}>
+                        Remove member
+                      </Text>
+                    </TouchableOpacity>
+                  )}
 
                   <TouchableOpacity
                     style={[
@@ -490,20 +487,22 @@ export const OwnerTeamScreen: React.FC<OwnerTeamScreenProps> = ({
                 </View>
 
                 <View style={styles.modalButtonStack}>
-                  <TouchableOpacity
-                    style={[
-                      styles.secondaryButton,
-                      {
-                        backgroundColor: colors.surfaceContainerLowest,
-                        borderColor: colors.error,
-                      },
-                    ]}
-                    onPress={() => setIsInviteRevokeSheet(true)}
-                  >
-                    <Text style={[styles.secondaryButtonText, { color: colors.error }]}>
-                      Revoke invitation
-                    </Text>
-                  </TouchableOpacity>
+                  {isOwner && (
+                    <TouchableOpacity
+                      style={[
+                        styles.secondaryButton,
+                        {
+                          backgroundColor: colors.surfaceContainerLowest,
+                          borderColor: colors.error,
+                        },
+                      ]}
+                      onPress={() => setIsInviteRevokeSheet(true)}
+                    >
+                      <Text style={[styles.secondaryButtonText, { color: colors.error }]}>
+                        Revoke invitation
+                      </Text>
+                    </TouchableOpacity>
+                  )}
 
                   <TouchableOpacity
                     style={[
@@ -578,12 +577,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     borderRadius: 20,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    borderWidth: 0,
   },
   statNumber: {
     fontSize: 30,
@@ -603,13 +597,8 @@ const styles = StyleSheet.create({
   },
   listGroup: {
     borderRadius: 20,
-    borderWidth: 1,
+    borderWidth: 0,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 1,
   },
   listRow: {
     flexDirection: 'row',

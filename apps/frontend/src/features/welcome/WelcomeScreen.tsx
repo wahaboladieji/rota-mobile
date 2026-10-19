@@ -120,7 +120,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onNavigateToSignUp,
   onOpenInviteCode,
 }) => {
-  const { colors, typography, spacingCollection, borderRadius } = useTheme();
+  const { colors, isDark, typography, spacingCollection, borderRadius } = useTheme();
 
   const [isInviteModalVisible, setIsInviteModalVisible] = useState(false);
   const [inviteCodeInput, setInviteCodeInput] = useState('');
@@ -171,7 +171,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
       {/* ─── Ambient Glow Background ─── */}
       <View style={styles.glowContainer} pointerEvents="none">

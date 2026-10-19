@@ -61,6 +61,13 @@ enum LedgerKind {
   STATE_CHANGE
 }
 
+enum PaymentLogStage {
+  USER_INITIATED
+  PROVIDER_COLLECTED
+  WEBHOOK_RECEIVED
+  USER_PAID
+}
+
 model User {
   id             String               @id @default(uuid()) @db.Uuid
   email          String               @unique
@@ -95,6 +102,7 @@ model Team {
   activity        ActivityEvent[]
   subscription    Subscription?
   paymentAttempts PaymentAttempt[]
+  paymentLogs     PaymentLog[]
   ledger          LedgerEntry[]
   createdAt       DateTime         @default(now()) @db.Timestamptz(3)
 }
@@ -315,6 +323,7 @@ model PaymentAttempt {
   team                Team          @relation(fields: [teamId], references: [id])
   subscription        Subscription  @relation(fields: [subscriptionId], references: [id])
   ledger              LedgerEntry[]
+  paymentLogs         PaymentLog[]
 }
 
 model WebhookEvent {
@@ -355,4 +364,23 @@ model LedgerEntry {
   corrections      LedgerEntry[]       @relation("Correction")
 
   @@index([subscriptionId, createdAt, id])
+}
+
+model PaymentLog {
+  id               String          @id @default(uuid()) @db.Uuid
+  teamId           String          @db.Uuid
+  paymentAttemptId String?         @db.Uuid
+  stage            PaymentLogStage
+  attemptCreatedAt DateTime        @default(now()) @db.Timestamptz(3)
+  eventType        String
+  message          String
+  metadata         Json?
+  createdAt        DateTime        @default(now()) @db.Timestamptz(3)
+
+  team             Team            @relation(fields: [teamId], references: [id])
+  paymentAttempt   PaymentAttempt? @relation(fields: [paymentAttemptId], references: [id])
+
+  @@index([teamId, attemptCreatedAt(sort: Desc), createdAt(sort: Asc)])
+  @@index([paymentAttemptId, createdAt(sort: Asc)])
+  @@index([teamId, createdAt])
 }

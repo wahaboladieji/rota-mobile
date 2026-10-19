@@ -18,6 +18,7 @@ import {
 } from '../../components/ReviewIcons';
 import { StaffShiftItem } from '../shifts/ShiftDetailsOwnerScreen';
 import { apiRequest } from '../../services/api';
+import { InsetDivider } from '../../components/InsetDivider';
 import { TeamMembersResponse } from '@rota/shared';
 
 interface RequestSwapScreenProps {
@@ -81,8 +82,12 @@ export const RequestSwapScreen: React.FC<RequestSwapScreenProps> = ({
     },
   });
 
+  const isShiftCompleted =
+    shift.status === 'COMPLETED' ||
+    (shift.endAt ? new Date() > new Date(shift.endAt) : false);
+
   const handleSendRequest = () => {
-    if (!selectedColleagueId) return;
+    if (!selectedColleagueId || isShiftCompleted) return;
     setErrorMessage(null);
     swapMutation.mutate();
   };
@@ -107,6 +112,27 @@ export const RequestSwapScreen: React.FC<RequestSwapScreenProps> = ({
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Completed Shift Banner */}
+        {isShiftCompleted && (
+          <View
+            style={[
+              styles.noticeBox,
+              {
+                backgroundColor: colors.surfaceContainerLow,
+                borderColor: colors.outlineVariant,
+                marginBottom: 16,
+              },
+            ]}
+          >
+            <AlertTriangleIcon color={colors.error} size={20} />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={[styles.noticeTitle, { color: colors.onSurface }]}>Shift completed</Text>
+              <Text style={[styles.noticeBody, { color: colors.onSurfaceVariant }]}>
+                This shift has ended and can no longer be swapped.
+              </Text>
+            </View>
+          </View>
+        )}
         <Text style={[styles.heading, { color: colors.onSurface }]}>Request a swap.</Text>
         <Text style={[styles.subheading, { color: colors.onSurfaceVariant }]}>
           Choose a colleague for your assigned shift.
@@ -192,52 +218,50 @@ export const RequestSwapScreen: React.FC<RequestSwapScreenProps> = ({
               const colleagueName = colleague.email.split('@')[0];
 
               return (
-                <TouchableOpacity
-                  key={colleague.id}
-                  style={[
-                    styles.colleagueRow,
-                    isSelected && { backgroundColor: colors.surfaceContainerLow },
-                    !isLast && {
-                      borderBottomWidth: 1,
-                      borderBottomColor: colors.surfaceContainerLow,
-                    },
-                  ]}
-                  onPress={() => setSelectedColleagueId(colleague.userId)}
-                  activeOpacity={0.7}
-                >
-                  <View
+                <View key={colleague.id}>
+                  <TouchableOpacity
                     style={[
-                      styles.avatarBox,
-                      {
-                        backgroundColor: isSelected ? colors.primary : colors.surfaceContainerLow,
-                      },
+                      styles.colleagueRow,
+                      isSelected && { backgroundColor: colors.surfaceContainerLow },
                     ]}
+                    onPress={() => setSelectedColleagueId(colleague.userId)}
+                    activeOpacity={0.7}
                   >
-                    <UserRoundIcon
-                      color={isSelected ? colors.onPrimary : colors.onSurfaceVariant}
-                      size={18}
-                    />
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={[styles.colleagueName, { color: colors.onSurface }]}>
-                      {colleagueName}
-                    </Text>
-                    <Text style={[styles.colleagueRole, { color: colors.onSurfaceVariant }]}>
-                      {colleague.role === 'STAFF' ? 'Staff' : colleague.role} · {colleague.email}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.checkCircle,
-                      {
-                        borderColor: isSelected ? colors.primary : colors.outlineVariant,
-                        backgroundColor: isSelected ? colors.primary : 'transparent',
-                      },
-                    ]}
-                  >
-                    {isSelected && <CheckIcon color={colors.onPrimary} size={14} />}
-                  </View>
-                </TouchableOpacity>
+                    <View
+                      style={[
+                        styles.avatarBox,
+                        {
+                          backgroundColor: isSelected ? colors.primary : colors.surfaceContainerLow,
+                        },
+                      ]}
+                    >
+                      <UserRoundIcon
+                        color={isSelected ? colors.onPrimary : colors.onSurfaceVariant}
+                        size={18}
+                      />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={[styles.colleagueName, { color: colors.onSurface }]}>
+                        {colleagueName}
+                      </Text>
+                      <Text style={[styles.colleagueRole, { color: colors.onSurfaceVariant }]}>
+                        {colleague.role === 'STAFF' ? 'Staff' : colleague.role} · {colleague.email}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.checkCircle,
+                        {
+                          borderColor: isSelected ? colors.primary : colors.outlineVariant,
+                          backgroundColor: isSelected ? colors.primary : 'transparent',
+                        },
+                      ]}
+                    >
+                      {isSelected && <CheckIcon color={colors.onPrimary} size={14} />}
+                    </View>
+                  </TouchableOpacity>
+                  {!isLast && <InsetDivider inset={66} />}
+                </View>
               );
             })}
           </View>
@@ -315,12 +339,15 @@ export const RequestSwapScreen: React.FC<RequestSwapScreenProps> = ({
           style={[
             styles.primaryButton,
             {
-              backgroundColor: !selectedColleagueId ? colors.surfaceContainerHigh : colors.primary,
-              opacity: !selectedColleagueId || swapMutation.isPending ? 0.6 : 1,
+              backgroundColor:
+                !selectedColleagueId || isShiftCompleted
+                  ? colors.surfaceContainerHigh
+                  : colors.primary,
+              opacity: !selectedColleagueId || swapMutation.isPending || isShiftCompleted ? 0.6 : 1,
             },
           ]}
           onPress={handleSendRequest}
-          disabled={!selectedColleagueId || swapMutation.isPending}
+          disabled={!selectedColleagueId || swapMutation.isPending || isShiftCompleted}
           activeOpacity={0.8}
         >
           {swapMutation.isPending ? (
@@ -329,10 +356,15 @@ export const RequestSwapScreen: React.FC<RequestSwapScreenProps> = ({
             <Text
               style={[
                 styles.primaryButtonText,
-                { color: !selectedColleagueId ? colors.onSurfaceVariant : colors.onPrimary },
+                {
+                  color:
+                    !selectedColleagueId || isShiftCompleted
+                      ? colors.onSurfaceVariant
+                      : colors.onPrimary,
+                },
               ]}
             >
-              Send request
+              {isShiftCompleted ? 'Shift completed' : 'Send request'}
             </Text>
           )}
         </TouchableOpacity>

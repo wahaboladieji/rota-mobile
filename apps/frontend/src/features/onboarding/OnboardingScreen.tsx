@@ -23,14 +23,14 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   const { colors, typography } = useTheme();
 
   const [step, setStep] = useState<OnboardingStep>(1);
-  const [teamName, setTeamName] = useState('Willow Café');
+  const [teamName, setTeamName] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Derives initials for team avatar, e.g. "Willow Café" -> "WC"
+  // Derives initials for team avatar
   const getInitials = (name: string) => {
     const trimmed = name.trim();
-    if (!trimmed) return 'WC';
+    if (!trimmed) return 'R';
     const parts = trimmed.split(/\s+/);
     if (parts.length >= 2) {
       return (parts[0][0] + parts[1][0]).toUpperCase();
@@ -251,7 +251,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
                     color: colors.onSurface,
                   },
                 ]}
-                placeholder="Willow Café"
+                placeholder="e.g. Willow Café"
                 placeholderTextColor={colors.onSurfaceVariant}
                 value={teamName}
                 onChangeText={(text) => {
@@ -326,7 +326,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
                 </View>
                 <View style={styles.reviewDetails}>
                   <Text style={[styles.cardTitle, { color: colors.onSurface }]}>
-                    {teamName.trim() || 'Willow Café'}
+                    {teamName.trim() || 'Your team'}
                   </Text>
                   <Text style={[styles.cardSub, { color: colors.onSurfaceVariant }]}>
                     Your membership: Owner

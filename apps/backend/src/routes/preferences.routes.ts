@@ -2,11 +2,14 @@ import { Router, Response } from 'express';
 import {
   AvailabilityWindowSchema,
   UserSettingsSchema,
+  UserSettingsPatchSchema,
   Role,
 } from '@rota/shared';
 import { prismaPrimary } from '../data/db';
+import { defaultUserSettings } from '../config';
 import { authenticate, requireTeamMembership, AuthenticatedRequest } from '../auth/guards';
 import { logger } from '../observability/logger';
+import { getOrSetCache, invalidateCache, CACHE_TTL } from '../services/cache.service';
 
 export const preferencesRouter = Router();
 
@@ -23,18 +26,24 @@ preferencesRouter.get(
     const { teamId } = req.params;
     const userId = req.user!.userId;
 
-    const prefs = await prismaPrimary.shiftPreference.findMany({
-      where: { teamId, userId },
-      orderBy: { weekday: 'asc' },
-    });
+    const items = await getOrSetCache(
+      `cache:prefs:${teamId}:${userId}`,
+      CACHE_TTL.USER_PREFERENCES,
+      async () => {
+        const prefs = await prismaPrimary.shiftPreference.findMany({
+          where: { teamId, userId },
+          orderBy: { weekday: 'asc' },
+        });
 
-    const items = prefs.map((p) => ({
-      id: p.id,
-      weekday: p.weekday,
-      dayName: DAY_NAMES[p.weekday] || 'Unknown',
-      startTime: p.startTime,
-      endTime: p.endTime,
-    }));
+        return prefs.map((p) => ({
+          id: p.id,
+          weekday: p.weekday,
+          dayName: DAY_NAMES[p.weekday] || 'Unknown',
+          startTime: p.startTime,
+          endTime: p.endTime,
+        }));
+      }
+    );
 
     res.status(200).json(items);
   }
@@ -75,6 +84,8 @@ preferencesRouter.post(
       });
     }
 
+    await invalidateCache(`cache:prefs:${teamId}:${userId}`);
+
     logger.info('Availability window saved', { userId, teamId, weekday, startTime, endTime });
     res.status(200).json({
       id: pref.id,
@@ -110,6 +121,8 @@ preferencesRouter.delete(
       where: { id: preferenceId },
     });
 
+    await invalidateCache(`cache:prefs:${teamId}:${userId}`);
+
     logger.info('Availability window deleted', { preferenceId, userId });
     res.status(200).json({ message: 'Window deleted successfully' });
   }
@@ -121,71 +134,149 @@ preferencesRouter.delete(
 preferencesRouter.get('/settings', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user!.userId;
 
-  let settings = await prismaPrimary.userSetting.findUnique({
-    where: { userId },
-  });
+  const settings = await getOrSetCache(
+    `cache:settings:${userId}`,
+    CACHE_TTL.USER_SETTINGS,
+    async () => {
+      let current = await prismaPrimary.userSetting.findUnique({
+        where: { userId },
+      });
 
-  if (!settings) {
-    settings = await prismaPrimary.userSetting.create({
-      data: {
-        userId,
-        timeZone: 'Africa/Lagos',
-        quietStart: '22:00',
-        quietEnd: '07:00',
-        shiftPush: true,
-        swapPush: true,
-        billingPush: true,
-        language: 'en',
-        theme: 'system',
-        fieldUpdatedAt: {},
-      },
-    });
-  }
+      if (!current) {
+        const nowIso = new Date().toISOString();
+        current = await prismaPrimary.userSetting.create({
+          data: {
+            userId,
+            timeZone: defaultUserSettings.timeZone,
+            quietStart: defaultUserSettings.quietStart,
+            quietEnd: defaultUserSettings.quietEnd,
+            shiftPush: true,
+            swapPush: true,
+            billingPush: true,
+            language: defaultUserSettings.language,
+            theme: defaultUserSettings.theme,
+            fieldUpdatedAt: {
+              quietHours: nowIso,
+              quietStart: nowIso,
+              quietEnd: nowIso,
+              timeZone: nowIso,
+              shiftPush: nowIso,
+              swapPush: nowIso,
+              billingPush: nowIso,
+              language: nowIso,
+              theme: nowIso,
+            },
+          },
+        });
+      }
+      return current;
+    }
+  );
 
   res.status(200).json(settings);
 });
 
 /**
- * PUT /api/settings - Update authenticated user settings
+ * Handle partial or full settings updates with per-field server timestamps
  */
-preferencesRouter.put('/settings', authenticate, async (req: AuthenticatedRequest, res: Response) => {
+async function handleUpdateSettings(req: AuthenticatedRequest, res: Response) {
   const userId = req.user!.userId;
 
-  const parseResult = UserSettingsSchema.safeParse(req.body);
+  const parseResult = UserSettingsPatchSchema.safeParse(req.body);
   if (!parseResult.success) {
     res.status(400).json({ error: 'Validation failed', details: parseResult.error.flatten() });
     return;
   }
 
-  const { quietStart, quietEnd, timeZone, shiftPush, swapPush, billingPush, theme, language } = parseResult.data;
+  const patch = parseResult.data;
+  const nowIso = new Date().toISOString();
+
+  // 1. Fetch existing settings (or initialize with defaults)
+  let existing = await prismaPrimary.userSetting.findUnique({
+    where: { userId },
+  });
+
+  const existingFieldUpdatedAt: Record<string, string> =
+    existing && typeof existing.fieldUpdatedAt === 'object' && existing.fieldUpdatedAt !== null
+      ? (existing.fieldUpdatedAt as Record<string, string>)
+      : {};
+
+  const updatedFieldUpdatedAt = { ...existingFieldUpdatedAt };
+
+  // 2. Build updated fields and per-field timestamps
+  const dataToUpdate: Record<string, any> = {};
+
+  if (patch.quietStart !== undefined) {
+    dataToUpdate.quietStart = patch.quietStart;
+    updatedFieldUpdatedAt.quietStart = nowIso;
+    updatedFieldUpdatedAt.quietHours = nowIso;
+  }
+  if (patch.quietEnd !== undefined) {
+    dataToUpdate.quietEnd = patch.quietEnd;
+    updatedFieldUpdatedAt.quietEnd = nowIso;
+    updatedFieldUpdatedAt.quietHours = nowIso;
+  }
+  if (patch.timeZone !== undefined) {
+    dataToUpdate.timeZone = patch.timeZone;
+    updatedFieldUpdatedAt.timeZone = nowIso;
+  }
+  if (patch.shiftPush !== undefined) {
+    dataToUpdate.shiftPush = patch.shiftPush;
+    updatedFieldUpdatedAt.shiftPush = nowIso;
+  }
+  if (patch.swapPush !== undefined) {
+    dataToUpdate.swapPush = patch.swapPush;
+    updatedFieldUpdatedAt.swapPush = nowIso;
+  }
+  if (patch.billingPush !== undefined) {
+    dataToUpdate.billingPush = patch.billingPush;
+    updatedFieldUpdatedAt.billingPush = nowIso;
+  }
+  if (patch.theme !== undefined) {
+    dataToUpdate.theme = patch.theme;
+    updatedFieldUpdatedAt.theme = nowIso;
+  }
+  if (patch.language !== undefined) {
+    dataToUpdate.language = patch.language;
+    updatedFieldUpdatedAt.language = nowIso;
+  }
+
+  dataToUpdate.fieldUpdatedAt = updatedFieldUpdatedAt;
 
   const updated = await prismaPrimary.userSetting.upsert({
     where: { userId },
     create: {
       userId,
-      quietStart: quietStart ?? null,
-      quietEnd: quietEnd ?? null,
-      timeZone,
-      shiftPush,
-      swapPush,
-      billingPush,
-      theme,
-      language,
-      fieldUpdatedAt: { updatedAt: new Date().toISOString() },
+      timeZone: patch.timeZone || defaultUserSettings.timeZone,
+      quietStart: patch.quietStart ?? defaultUserSettings.quietStart,
+      quietEnd: patch.quietEnd ?? defaultUserSettings.quietEnd,
+      shiftPush: patch.shiftPush ?? true,
+      swapPush: patch.swapPush ?? true,
+      billingPush: patch.billingPush ?? true,
+      theme: patch.theme || defaultUserSettings.theme,
+      language: patch.language || defaultUserSettings.language,
+      fieldUpdatedAt: updatedFieldUpdatedAt,
+      ...dataToUpdate,
     },
-    update: {
-      quietStart: quietStart ?? null,
-      quietEnd: quietEnd ?? null,
-      timeZone,
-      shiftPush,
-      swapPush,
-      billingPush,
-      theme,
-      language,
-      fieldUpdatedAt: { updatedAt: new Date().toISOString() },
-    },
+    update: dataToUpdate,
   });
 
-  logger.info('User settings updated', { userId });
+  await invalidateCache(`cache:settings:${userId}`);
+
+  logger.info('User settings updated with per-field timestamps', {
+    userId,
+    updatedFields: Object.keys(dataToUpdate).filter((k) => k !== 'fieldUpdatedAt'),
+  });
   res.status(200).json(updated);
-});
+}
+
+/**
+ * PUT /api/settings - Update authenticated user settings
+ */
+preferencesRouter.put('/settings', authenticate, handleUpdateSettings);
+
+/**
+ * PATCH /api/settings - Partially update authenticated user settings
+ */
+preferencesRouter.patch('/settings', authenticate, handleUpdateSettings);
+

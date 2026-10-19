@@ -27,6 +27,7 @@ import { VerificationPurpose } from '../auth/verification.service';
 import { authenticate, AuthenticatedRequest } from '../auth/guards';
 import { enqueueEmailJob, redisConnection } from '../jobs/queue';
 import { logger } from '../observability/logger';
+import { loginRateLimiter, passwordResetRateLimiter } from '../middleware/rate-limiter';
 
 export const authRouter = Router();
 
@@ -97,7 +98,7 @@ authRouter.post('/signup', async (req: AuthenticatedRequest, res: Response) => {
 /**
  * POST /api/auth/login - Email/password login
  */
-authRouter.post('/login', async (req: AuthenticatedRequest, res: Response) => {
+authRouter.post('/login', loginRateLimiter, async (req: AuthenticatedRequest, res: Response) => {
   const parseResult = LoginInputSchema.safeParse(req.body);
   if (!parseResult.success) {
     res.status(400).json({ error: 'Validation failed', details: parseResult.error.flatten() });
@@ -235,7 +236,7 @@ authRouter.post('/refresh', async (req: AuthenticatedRequest, res: Response) => 
 });
 
 /**
- * POST /api/auth/logout - Invalidate current session
+ * POST /api/auth/logout - Invalidate current session and optional device push token
  */
 authRouter.post('/logout', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   if (req.user) {
@@ -243,13 +244,22 @@ authRouter.post('/logout', authenticate, async (req: AuthenticatedRequest, res: 
       where: { id: req.user.sessionId },
       data: { revokedAt: new Date() },
     });
+
+    if (req.body?.pushToken && typeof req.body.pushToken === 'string') {
+      await prismaPrimary.device.updateMany({
+        where: { pushToken: req.body.pushToken, userId: req.user.userId },
+        data: { invalidatedAt: new Date() },
+      });
+      logger.info('Device push token invalidated on logout', { userId: req.user.userId });
+    }
+
     logger.info('User logged out', { userId: req.user.userId, sessionId: req.user.sessionId });
   }
   res.status(200).json({ message: 'Logged out successfully' });
 });
 
 /**
- * POST /api/auth/logout-all - Invalidate all sessions for user
+ * POST /api/auth/logout-all - Invalidate all sessions and all device push tokens for user
  */
 authRouter.post('/logout-all', authenticate, async (req: AuthenticatedRequest, res: Response) => {
   if (req.user) {
@@ -257,7 +267,13 @@ authRouter.post('/logout-all', authenticate, async (req: AuthenticatedRequest, r
       where: { userId: req.user.userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
-    logger.info('User logged out of all devices', { userId: req.user.userId });
+
+    await prismaPrimary.device.updateMany({
+      where: { userId: req.user.userId, invalidatedAt: null },
+      data: { invalidatedAt: new Date() },
+    });
+
+    logger.info('User logged out of all devices; sessions and push tokens invalidated', { userId: req.user.userId });
   }
   res.status(200).json({ message: 'All sessions revoked successfully' });
 });
@@ -265,7 +281,7 @@ authRouter.post('/logout-all', authenticate, async (req: AuthenticatedRequest, r
 /**
  * POST /api/auth/magic-link - Request magic link sign-in
  */
-authRouter.post('/magic-link', async (req: AuthenticatedRequest, res: Response) => {
+authRouter.post('/magic-link', passwordResetRateLimiter, async (req: AuthenticatedRequest, res: Response) => {
   const parseResult = MagicLinkRequestSchema.safeParse(req.body);
   if (!parseResult.success) {
     res.status(400).json({ error: 'Validation failed', details: parseResult.error.flatten() });
@@ -375,7 +391,7 @@ authRouter.post('/magic-link/verify', async (req: AuthenticatedRequest, res: Res
 /**
  * POST /api/auth/password-reset - Request password reset
  */
-authRouter.post('/password-reset', async (req: AuthenticatedRequest, res: Response) => {
+authRouter.post('/password-reset', passwordResetRateLimiter, async (req: AuthenticatedRequest, res: Response) => {
   const parseResult = PasswordResetRequestSchema.safeParse(req.body);
   if (!parseResult.success) {
     res.status(400).json({ error: 'Validation failed', details: parseResult.error.flatten() });

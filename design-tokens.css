@@ -34,14 +34,24 @@
 
   /* --- Neutral Palette (Achromatic Foundations) --- */
   --primitive-color-neutral-100: hsl(0, 0%, 100%); /* Neutral 100 (Pure White) */
+  --primitive-color-neutral-99: hsl(0, 0%, 99%); /* Neutral 99 (Near-White Notice Surface) */
   --primitive-color-neutral-98: hsl(0, 0%, 98%); /* Neutral 98 (Off-White / Light Canvas) */
   --primitive-color-neutral-95: hsl(0, 0%, 95%); /* Neutral 95 (Soft Gray / Container Low) */
   --primitive-color-neutral-93: hsl(0, 0%, 93%); /* Neutral 93 (Light Surface Container) */
   --primitive-color-neutral-91: hsl(0, 0%, 91%); /* Neutral 91 (Surface Container High) */
   --primitive-color-neutral-89: hsl(0, 0%, 89%); /* Neutral 89 (Surface Container Highest / Dark Text Foundation) */
   --primitive-color-neutral-85: hsl(0, 0%, 85%); /* Neutral 85 (Surface Dim Light) */
+  --primitive-color-neutral-dark-bright-20: hsl(220, 12%, 20%); /* Neutral Dark 20 (Surface Bright) */
+  --primitive-color-neutral-dark-20: hsl(220, 11%, 20%); /* Neutral Dark 20 (Surface Container Highest) */
   --primitive-color-neutral-19: hsl(0, 0%, 19%); /* Neutral 19 (Dark Charcoal / Inverse Surface) */
+  --primitive-color-neutral-dark-17: hsl(220, 12%, 17%); /* Neutral Dark 17 (Surface Container High) */
+  --primitive-color-neutral-dark-15: hsl(220, 13%, 15%); /* Neutral Dark 15 (Neutral 99 Dark Notice Surface) */
+  --primitive-color-neutral-dark-14: hsl(220, 13%, 14%); /* Neutral Dark 14 (Surface Container Standard) */
   --primitive-color-neutral-11: hsl(0, 0%, 11%); /* Neutral 11 (Near Black / High Contrast Body Text) */
+  --primitive-color-neutral-dark-11: hsl(220, 14%, 11%); /* Neutral Dark 11 (Surface Container Low) */
+  --primitive-color-neutral-dark-10: hsl(220, 15%, 10%); /* Neutral Dark 10 (Base Surface) */
+  --primitive-color-neutral-dark-8: hsl(220, 15%, 8%); /* Neutral Dark 8 (Root Background Canvas) */
+  --primitive-color-neutral-dark-6: hsl(220, 15%, 6%); /* Neutral Dark 6 (Surface Dim / Surface Container Lowest) */
 
   /* --- Neutral Variant Palette (Purple/Violet-tinted Grays) --- */
   --primitive-color-neutral-variant-90: hsl(276, 19%, 90%); /* Neutral Variant 90 (Light Surface Variant) */
@@ -56,7 +66,6 @@
   --primitive-color-primary-55: hsl(221, 85%, 55%); /* Primary 55 (Main Brand Royal Blue) */
   --primitive-color-primary-43: hsl(217, 100%, 43%); /* Primary 43 (Dark Inverse Primary) */
   --primitive-color-primary-33: hsl(218, 100%, 33%); /* Primary 33 (Light On-Primary-Container / Dark Primary Container) */
-  --primitive-color-primary-23: hsl(219, 100%, 23%); /* Primary 23 (Deep Navy / Dark On-Primary) */
 
   /* --- Secondary Palette (Teal Foundations) --- */
   --primitive-color-secondary-71: hsl(171, 91%, 71%); /* Secondary 71 (Light Secondary Container / Dark On-Secondary-Container) */
@@ -73,12 +82,15 @@
   --primitive-color-tertiary-21: hsl(215, 100%, 21%); /* Tertiary 21 (Dark On-Tertiary Text) */
 
   /* --- Error Palette (Crimson & Red Foundations) --- */
+  --primitive-color-error-97: hsl(7, 100%, 97%); /* Error 97 (Light Error Container High) */
   --primitive-color-error-95: hsl(7, 100%, 95%); /* Error 95 (Light Error Container) */
+  --primitive-color-error-dark-88: hsl(7, 100%, 88%); /* Error Dark 88 (Light Coral Pink / Dark On-Error-Container) */
+  --primitive-color-error-dark-69: hsl(358, 100%, 69%); /* Error Dark 69 (Bright Coral Red / Accessible Dark Error Accent) */
   --primitive-color-error-38: hsl(359, 100%, 38%); /* Error 38 (Vibrant Crimson / Light Error Accent) */
   --primitive-color-error-29: hsl(359, 100%, 29%); /* Error 29 (Deep Maroon / Light On-Error-Container) */
-
-  /* --- Unresolved Placeholder (Blocked per design-system-rule.md) --- */
-  --primitive-color-magenta-unresolved: hsl(300, 100%, 50%); /* Unresolved Magenta Placeholder (Blocked per design-system-rule.md) */
+  --primitive-color-error-dark-24: hsl(359, 65%, 24%); /* Error Dark 24 (Highlighted Dark Error Container) */
+  --primitive-color-error-dark-18: hsl(359, 70%, 18%); /* Error Dark 18 (Dark Crimson Error Container) */
+  --primitive-color-error-dark-15: hsl(359, 100%, 15%); /* Error Dark 15 (Deep Maroon / Dark On-Error Button Text) */
 
   /* ==========================================================================
      TIER 2: COLOR ROLES (LIGHT THEME - DEFAULT)
@@ -116,6 +128,8 @@
   --color-on-error: var(--on-error-color);
   --error-container-color: var(--primitive-color-error-95); /* hsl(7, 100%, 95%) -> Error 95 (Light Error Container) */
   --color-error-container: var(--error-container-color);
+  --error-container-high-color: var(--primitive-color-error-97); /* hsl(7, 100%, 97%) -> Error 97 (Light Error Container High) */
+  --color-error-container-high: var(--error-container-high-color);
   --on-error-container-color: var(--primitive-color-error-29); /* hsl(359, 100%, 29%) -> Error 29 (Deep Maroon / Light On-Error-Container) */
   --color-on-error-container: var(--on-error-container-color);
   --background-color: var(--primitive-color-neutral-98); /* hsl(0, 0%, 98%) -> Neutral 98 (Off-White / Light Canvas) */
@@ -154,6 +168,8 @@
   --color-surface-container-high: var(--surface-container-high-color);
   --surface-container-highest-color: var(--primitive-color-neutral-89); /* hsl(0, 0%, 89%) -> Neutral 89 (Surface Container Highest / Dark Text Foundation) */
   --color-surface-container-highest: var(--surface-container-highest-color);
+  --neutral-99-color: var(--primitive-color-neutral-99); /* hsl(0, 0%, 99%) -> Neutral 99 (Near-White Notice Surface) */
+  --color-neutral-99: var(--neutral-99-color);
 
   /* ==========================================================================
      TYPOGRAPHY TOKENS
@@ -501,6 +517,8 @@
   --color-on-error: var(--on-error-color);
   --error-container-color: var(--primitive-color-error-95);
   --color-error-container: var(--error-container-color);
+  --error-container-high-color: var(--primitive-color-error-97);
+  --color-error-container-high: var(--error-container-high-color);
   --on-error-container-color: var(--primitive-color-error-29);
   --color-on-error-container: var(--on-error-container-color);
   --background-color: var(--primitive-color-neutral-98);
@@ -539,6 +557,8 @@
   --color-surface-container-high: var(--surface-container-high-color);
   --surface-container-highest-color: var(--primitive-color-neutral-89);
   --color-surface-container-highest: var(--surface-container-highest-color);
+  --neutral-99-color: var(--primitive-color-neutral-99);
+  --color-neutral-99: var(--neutral-99-color);
 }
 
 /* ==========================================================================
@@ -551,7 +571,7 @@
 [data-theme="dark"] {
   --primary-color: var(--primitive-color-primary-55);
   --color-primary: var(--primary-color);
-  --on-primary-color: var(--primitive-color-primary-23);
+  --on-primary-color: var(--primitive-color-neutral-100);
   --color-on-primary: var(--on-primary-color);
   --primary-container-color: var(--primitive-color-primary-33);
   --color-primary-container: var(--primary-container-color);
@@ -573,19 +593,21 @@
   --color-tertiary-container: var(--tertiary-container-color);
   --on-tertiary-container-color: var(--primitive-color-tertiary-93);
   --color-on-tertiary-container: var(--on-tertiary-container-color);
-  --error-color: var(--primitive-color-magenta-unresolved); /* [UNRESOLVED TOKEN - BLOCKED] */
+  --error-color: var(--primitive-color-error-dark-69);
   --color-error: var(--error-color);
-  --on-error-color: var(--primitive-color-magenta-unresolved); /* [UNRESOLVED TOKEN - BLOCKED] */
+  --on-error-color: var(--primitive-color-error-dark-15);
   --color-on-error: var(--on-error-color);
-  --error-container-color: var(--primitive-color-magenta-unresolved); /* [UNRESOLVED TOKEN - BLOCKED] */
+  --error-container-color: var(--primitive-color-error-dark-18);
   --color-error-container: var(--error-container-color);
-  --on-error-container-color: var(--primitive-color-magenta-unresolved); /* [UNRESOLVED TOKEN - BLOCKED] */
+  --error-container-high-color: var(--primitive-color-error-dark-24);
+  --color-error-container-high: var(--error-container-high-color);
+  --on-error-container-color: var(--primitive-color-error-dark-88);
   --color-on-error-container: var(--on-error-container-color);
-  --background-color: var(--primitive-color-magenta-unresolved); /* [UNRESOLVED TOKEN - BLOCKED] */
+  --background-color: var(--primitive-color-neutral-dark-8);
   --color-background: var(--background-color);
   --on-background-color: var(--primitive-color-neutral-89);
   --color-on-background: var(--on-background-color);
-  --surface-color: var(--primitive-color-magenta-unresolved); /* [UNRESOLVED TOKEN - BLOCKED] */
+  --surface-color: var(--primitive-color-neutral-dark-10);
   --color-surface: var(--surface-color);
   --on-surface-color: var(--primitive-color-neutral-89);
   --color-on-surface: var(--on-surface-color);
@@ -603,20 +625,22 @@
   --color-inverse-on-surface: var(--inverse-on-surface-color);
   --inverse-primary-color: var(--primitive-color-primary-43);
   --color-inverse-primary: var(--inverse-primary-color);
-  --surface-dim-color: var(--primitive-color-magenta-unresolved); /* [UNRESOLVED TOKEN - BLOCKED] */
+  --surface-dim-color: var(--primitive-color-neutral-dark-6);
   --color-surface-dim: var(--surface-dim-color);
-  --surface-bright-color: var(--primitive-color-magenta-unresolved); /* [UNRESOLVED TOKEN - BLOCKED] */
+  --surface-bright-color: var(--primitive-color-neutral-dark-bright-20);
   --color-surface-bright: var(--surface-bright-color);
-  --surface-container-lowest-color: var(--primitive-color-magenta-unresolved); /* [UNRESOLVED TOKEN - BLOCKED] */
+  --surface-container-lowest-color: var(--primitive-color-neutral-dark-6);
   --color-surface-container-lowest: var(--surface-container-lowest-color);
-  --surface-container-low-color: var(--primitive-color-neutral-11);
+  --surface-container-low-color: var(--primitive-color-neutral-dark-11);
   --color-surface-container-low: var(--surface-container-low-color);
-  --surface-container-color: var(--primitive-color-magenta-unresolved); /* [UNRESOLVED TOKEN - BLOCKED] */
+  --surface-container-color: var(--primitive-color-neutral-dark-14);
   --color-surface-container: var(--surface-container-color);
-  --surface-container-high-color: var(--primitive-color-magenta-unresolved); /* [UNRESOLVED TOKEN - BLOCKED] */
+  --surface-container-high-color: var(--primitive-color-neutral-dark-17);
   --color-surface-container-high: var(--surface-container-high-color);
-  --surface-container-highest-color: var(--primitive-color-magenta-unresolved); /* [UNRESOLVED TOKEN - BLOCKED] */
+  --surface-container-highest-color: var(--primitive-color-neutral-dark-20);
   --color-surface-container-highest: var(--surface-container-highest-color);
+  --neutral-99-color: var(--primitive-color-neutral-dark-15);
+  --color-neutral-99: var(--neutral-99-color);
 }
 
 /**
@@ -628,7 +652,7 @@
   :root:not([data-theme="light"]) {
     --primary-color: var(--primitive-color-primary-55);
     --color-primary: var(--primary-color);
-    --on-primary-color: var(--primitive-color-primary-23);
+    --on-primary-color: var(--primitive-color-neutral-100);
     --color-on-primary: var(--on-primary-color);
     --primary-container-color: var(--primitive-color-primary-33);
     --color-primary-container: var(--primary-container-color);
@@ -650,19 +674,21 @@
     --color-tertiary-container: var(--tertiary-container-color);
     --on-tertiary-container-color: var(--primitive-color-tertiary-93);
     --color-on-tertiary-container: var(--on-tertiary-container-color);
-    --error-color: var(--primitive-color-magenta-unresolved);
+    --error-color: var(--primitive-color-error-dark-69);
     --color-error: var(--error-color);
-    --on-error-color: var(--primitive-color-magenta-unresolved);
+    --on-error-color: var(--primitive-color-error-dark-15);
     --color-on-error: var(--on-error-color);
-    --error-container-color: var(--primitive-color-magenta-unresolved);
+    --error-container-color: var(--primitive-color-error-dark-18);
     --color-error-container: var(--error-container-color);
-    --on-error-container-color: var(--primitive-color-magenta-unresolved);
+    --error-container-high-color: var(--primitive-color-error-dark-24);
+    --color-error-container-high: var(--error-container-high-color);
+    --on-error-container-color: var(--primitive-color-error-dark-88);
     --color-on-error-container: var(--on-error-container-color);
-    --background-color: var(--primitive-color-magenta-unresolved);
+    --background-color: var(--primitive-color-neutral-dark-8);
     --color-background: var(--background-color);
     --on-background-color: var(--primitive-color-neutral-89);
     --color-on-background: var(--on-background-color);
-    --surface-color: var(--primitive-color-magenta-unresolved);
+    --surface-color: var(--primitive-color-neutral-dark-10);
     --color-surface: var(--surface-color);
     --on-surface-color: var(--primitive-color-neutral-89);
     --color-on-surface: var(--on-surface-color);
@@ -680,19 +706,21 @@
     --color-inverse-on-surface: var(--inverse-on-surface-color);
     --inverse-primary-color: var(--primitive-color-primary-43);
     --color-inverse-primary: var(--inverse-primary-color);
-    --surface-dim-color: var(--primitive-color-magenta-unresolved);
+    --surface-dim-color: var(--primitive-color-neutral-dark-6);
     --color-surface-dim: var(--surface-dim-color);
-    --surface-bright-color: var(--primitive-color-magenta-unresolved);
+    --surface-bright-color: var(--primitive-color-neutral-dark-bright-20);
     --color-surface-bright: var(--surface-bright-color);
-    --surface-container-lowest-color: var(--primitive-color-magenta-unresolved);
+    --surface-container-lowest-color: var(--primitive-color-neutral-dark-6);
     --color-surface-container-lowest: var(--surface-container-lowest-color);
-    --surface-container-low-color: var(--primitive-color-neutral-11);
+    --surface-container-low-color: var(--primitive-color-neutral-dark-11);
     --color-surface-container-low: var(--surface-container-low-color);
-    --surface-container-color: var(--primitive-color-magenta-unresolved);
+    --surface-container-color: var(--primitive-color-neutral-dark-14);
     --color-surface-container: var(--surface-container-color);
-    --surface-container-high-color: var(--primitive-color-magenta-unresolved);
+    --surface-container-high-color: var(--primitive-color-neutral-dark-17);
     --color-surface-container-high: var(--surface-container-high-color);
-    --surface-container-highest-color: var(--primitive-color-magenta-unresolved);
+    --surface-container-highest-color: var(--primitive-color-neutral-dark-20);
     --color-surface-container-highest: var(--surface-container-highest-color);
+    --neutral-99-color: var(--primitive-color-neutral-dark-15);
+    --color-neutral-99: var(--neutral-99-color);
   }
 }

@@ -7,8 +7,8 @@ import {
 import { prismaPrimary } from '../data/db';
 import { authenticate, requireTeamMembership, AuthenticatedRequest } from '../auth/guards';
 import { logger } from '../observability/logger';
-import { sendEmail } from '../services/mailer.service';
-import { enqueuePushJob } from '../jobs/queue';
+import { enqueuePushJob, enqueueEmailJob } from '../jobs/queue';
+import { schedulingConfig } from '../config';
 
 export const shiftsRouter = Router();
 
@@ -70,6 +70,17 @@ shiftsRouter.post(
   async (req: AuthenticatedRequest, res: Response) => {
     const { teamId } = req.params;
 
+    // PRD D1: Initial teams stay in PENDING_INITIAL_PAYMENT until subscribed; publishing shifts is blocked
+    const subscription = await prismaPrimary.subscription.findUnique({
+      where: { teamId },
+    });
+    if (subscription?.status === 'PENDING_INITIAL_PAYMENT') {
+      res.status(403).json({
+        error: 'Subscription required: Complete initial payment before publishing shifts',
+      });
+      return;
+    }
+
     const parseResult = CreateShiftInputSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: 'Validation failed', details: parseResult.error.flatten() });
@@ -85,11 +96,12 @@ shiftsRouter.post(
       return;
     }
 
-    // 8-week horizon constraint (PRD Section 10)
+    // Configurable horizon constraint (default 8-week horizon per PRD Section 10)
     const now = new Date();
-    const maxHorizon = new Date(now.getTime() + 8 * 7 * 24 * 60 * 60 * 1000);
+    const maxHorizonMs = schedulingConfig.maxHorizonWeeks * 7 * 24 * 60 * 60 * 1000;
+    const maxHorizon = new Date(now.getTime() + maxHorizonMs);
     if (startDate > maxHorizon) {
-      res.status(400).json({ error: 'Shifts cannot be scheduled beyond the 8-week horizon' });
+      res.status(400).json({ error: `Shifts cannot be scheduled beyond the ${schedulingConfig.maxHorizonWeeks}-week horizon` });
       return;
     }
 
@@ -185,19 +197,23 @@ shiftsRouter.post(
         });
         const timeFormatted = `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')} – ${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`;
 
-        sendEmail({
-          to: assigneeMembership.user.email,
-          subject: `New shift scheduled on Rota (${teamName})`,
-          html: `
+        enqueueEmailJob(
+          {
+            type: 'SHIFT_NOTIFICATION',
+            recipientEmail: assigneeMembership.user.email,
+            subject: `New shift scheduled on Rota (${teamName})`,
+            html: `
 <p>Hello ${assigneeName},</p>
 <p>A new shift has been published for you on <strong>${teamName}</strong>:</p>
 <p><strong>Date:</strong> ${dateFormatted}<br/>
 <strong>Time:</strong> ${timeFormatted}</p>
 <p>Open the Rota mobile app to view your schedule and details.</p>
-          `.trim(),
-          text: `Hello ${assigneeName},\nA new shift has been published for you on ${teamName}:\nDate: ${dateFormatted}\nTime: ${timeFormatted}\n\nOpen Rota to view your schedule.`,
-        }).catch((err) => {
-          logger.warn('Failed to dispatch shift notification email', { error: err.message });
+            `.trim(),
+            text: `Hello ${assigneeName},\nA new shift has been published for you on ${teamName}:\nDate: ${dateFormatted}\nTime: ${timeFormatted}\n\nOpen Rota to view your schedule.`,
+          },
+          req.headers['x-request-id'] as string
+        ).catch((err) => {
+          logger.warn('Failed to enqueue shift notification email job', { error: err.message });
         });
 
         // Enqueue background push notification job (non-blocking, handled by worker)
@@ -205,6 +221,9 @@ shiftsRouter.post(
           userId: assigneeId,
           teamId,
           group: 'SHIFT',
+          eventType: 'NEW_SHIFT',
+          isUrgent: false, // New shifts are never urgent and wait until quiet hours end (PRD F7.5)
+          shiftStartAt: shift.startAt.toISOString(),
           title: `New Shift Scheduled 📅`,
           body: `You have a shift on ${dateFormatted} (${timeFormatted}) in ${teamName}`,
           data: {
@@ -277,6 +296,11 @@ shiftsRouter.put(
 
     if (!existing) {
       res.status(404).json({ error: 'Shift not found or already cancelled' });
+      return;
+    }
+
+    if (existing.endAt <= new Date()) {
+      res.status(400).json({ error: 'Completed shifts cannot be edited' });
       return;
     }
 
@@ -391,17 +415,29 @@ shiftsRouter.put(
       });
       const timeFormatted = `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')} – ${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`;
 
-      sendEmail({
-        to: assigneeMembership.user.email,
-        subject: `Shift updated on Rota (${teamName})`,
-        html: `<p>Your shift on <strong>${teamName}</strong> has been updated:</p><p><strong>Date:</strong> ${dateFormatted}<br/><strong>Time:</strong> ${timeFormatted}</p>`,
-        text: `Your shift on ${teamName} has been updated:\nDate: ${dateFormatted}\nTime: ${timeFormatted}`,
-      }).catch((err) => logger.warn('Failed to dispatch shift update email', { error: err.message }));
+      enqueueEmailJob(
+        {
+          type: 'SHIFT_NOTIFICATION',
+          recipientEmail: assigneeMembership.user.email,
+          subject: `Shift updated on Rota (${teamName})`,
+          html: `<p>Your shift on <strong>${teamName}</strong> has been updated:</p><p><strong>Date:</strong> ${dateFormatted}<br/><strong>Time:</strong> ${timeFormatted}</p>`,
+          text: `Your shift on ${teamName} has been updated:\nDate: ${dateFormatted}\nTime: ${timeFormatted}`,
+        },
+        req.headers['x-request-id'] as string
+      ).catch((err) => logger.warn('Failed to enqueue shift update email job', { error: err.message }));
+
+      const shiftStart = updated.startAt.getTime();
+      const timeToShift = shiftStart - Date.now();
+      const urgentMs = schedulingConfig.urgentShiftThresholdHours * 60 * 60 * 1000;
+      const isUrgent = timeToShift > 0 && timeToShift <= urgentMs;
 
       enqueuePushJob({
         userId: assigneeId,
         teamId,
         group: 'SHIFT',
+        eventType: 'SHIFT_CHANGE',
+        isUrgent,
+        shiftStartAt: updated.startAt.toISOString(),
         title: `Shift Updated 🕒`,
         body: `Your shift on ${dateFormatted} has been updated (${timeFormatted})`,
         data: {
@@ -447,6 +483,11 @@ shiftsRouter.delete(
 
     if (!existing) {
       res.status(404).json({ error: 'Shift not found' });
+      return;
+    }
+
+    if (existing.endAt <= new Date()) {
+      res.status(400).json({ error: 'Completed shifts cannot be cancelled' });
       return;
     }
 
@@ -511,20 +552,30 @@ shiftsRouter.delete(
         });
         const teamName = existing.team?.name || 'Your Team';
 
-        sendEmail({
-          to: existing.assignee.email,
-          subject: `Shift cancelled on Rota (${teamName})`,
-          html: `<p>Your shift scheduled for <strong>${dateFormatted}</strong> on <strong>${teamName}</strong> has been cancelled by ${actorName}.</p>`,
-          text: `Your shift scheduled for ${dateFormatted} on ${teamName} has been cancelled by ${actorName}.`,
-        }).catch((err) => logger.warn('Failed to dispatch shift cancellation email', { error: err.message }));
+        enqueueEmailJob(
+          {
+            type: 'SHIFT_NOTIFICATION',
+            recipientEmail: existing.assignee.email,
+            subject: `Shift cancelled on Rota (${teamName})`,
+            html: `<p>Your shift scheduled for <strong>${dateFormatted}</strong> on <strong>${teamName}</strong> has been cancelled by ${actorName}.</p>`,
+            text: `Your shift scheduled for ${dateFormatted} on ${teamName} has been cancelled by ${actorName}.`,
+          },
+          req.headers['x-request-id'] as string
+        ).catch((err) => logger.warn('Failed to enqueue shift cancellation email job', { error: err.message }));
 
-        // Cancelled shifts are urgent if starting within 12h (PRD Section 7 / AGENTS.md rule 18)
-        const isUrgent = existing.startAt.getTime() - Date.now() < 12 * 60 * 60 * 1000;
+        // Cancelled shifts are urgent only if starting within configured hours (PRD F7.5 / AGENTS.md rule 18)
+        const shiftStart = existing.startAt.getTime();
+        const timeToShift = shiftStart - Date.now();
+        const urgentMs = schedulingConfig.urgentShiftThresholdHours * 60 * 60 * 1000;
+        const isUrgent = timeToShift > 0 && timeToShift <= urgentMs;
 
         enqueuePushJob({
           userId: existing.assigneeId,
           teamId,
           group: 'SHIFT',
+          eventType: 'SHIFT_CANCEL',
+          isUrgent,
+          shiftStartAt: existing.startAt.toISOString(),
           title: `Shift Cancelled ⚠️`,
           body: `Your shift on ${dateFormatted} (${teamName}) was cancelled`,
           data: {
@@ -532,7 +583,6 @@ shiftsRouter.delete(
             shiftId,
             teamId,
           },
-          isUrgent,
         }).catch((err) => logger.warn('Failed to enqueue shift cancellation push job', { error: err.message }));
       }
     } catch (err: any) {

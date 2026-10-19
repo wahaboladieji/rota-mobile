@@ -4,12 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useTheme, titleMediumText } from '../../theme';
 import { ArrowLeftIcon, UserRoundIcon, UsersIcon, ChevronRightIcon } from '../../components/ReviewIcons';
 import { apiRequest } from '../../services/api';
+import { InsetDivider } from '../../components/InsetDivider';
 import { TeamMembersResponse, Role } from '@rota/shared';
 
 interface StaffTeamScreenProps {
   teamId: string;
   teamName: string;
   currentUserId: string;
+  userRole?: Role;
   onBack: () => void;
   onNavigateToAccount: () => void;
 }
@@ -18,6 +20,7 @@ export const StaffTeamScreen: React.FC<StaffTeamScreenProps> = ({
   teamId,
   teamName,
   currentUserId,
+  userRole,
   onBack,
   onNavigateToAccount,
 }) => {
@@ -68,7 +71,7 @@ export const StaffTeamScreen: React.FC<StaffTeamScreenProps> = ({
               styles.listGroup,
               {
                 backgroundColor: colors.surfaceContainerLowest,
-                borderColor: colors.outlineVariant,
+                borderColor: colors.surfaceContainerLow,
               },
             ]}
           >
@@ -84,62 +87,73 @@ export const StaffTeamScreen: React.FC<StaffTeamScreenProps> = ({
               const isLast = index === members.length - 1;
 
               return (
-                <TouchableOpacity
-                  key={member.id}
-                  style={[
-                    styles.listRow,
-                    !isLast && { borderBottomWidth: 1, borderBottomColor: colors.surfaceContainerLow },
-                  ]}
-                  onPress={() => {
-                    if (isSelf) {
-                      onNavigateToAccount();
-                    }
-                  }}
-                  activeOpacity={isSelf ? 0.7 : 1}
-                >
-                  <View
-                    style={[
-                      styles.avatarBox,
-                      { backgroundColor: isSelf ? colors.primary : colors.surfaceContainerLow },
-                    ]}
+                <View key={member.id}>
+                  <TouchableOpacity
+                    style={styles.listRow}
+                    onPress={() => {
+                      if (isSelf) {
+                        onNavigateToAccount();
+                      }
+                    }}
+                    activeOpacity={isSelf ? 0.7 : 1}
                   >
-                    <UserRoundIcon
-                      color={isSelf ? colors.onPrimary : colors.onSurfaceVariant}
-                      size={18}
-                    />
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 14 }}>
-                    <Text style={[styles.memberName, { color: colors.onSurface }]}>
-                      {nameDisplay}
-                    </Text>
-                    <Text style={[styles.memberRole, { color: colors.onSurfaceVariant }]}>
-                      {isSelf ? `Staff · ${member.email}` : roleDisplay}
-                    </Text>
-                  </View>
-                  {isSelf && <ChevronRightIcon color={colors.onSurfaceVariant} size={18} />}
-                </TouchableOpacity>
+                    <View
+                      style={[
+                        styles.avatarBox,
+                        { backgroundColor: isSelf ? colors.primary : colors.surfaceContainerLow },
+                      ]}
+                    >
+                      <UserRoundIcon
+                        color={isSelf ? colors.onPrimary : colors.onSurfaceVariant}
+                        size={18}
+                      />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 14 }}>
+                      <Text style={[styles.memberName, { color: colors.onSurface }]}>
+                        {nameDisplay}
+                      </Text>
+                      <Text style={[styles.memberRole, { color: colors.onSurfaceVariant }]}>
+                        {isSelf ? `${roleDisplay} · ${member.email}` : roleDisplay}
+                      </Text>
+                    </View>
+                    {isSelf && <ChevronRightIcon color={colors.onSurfaceVariant} size={18} />}
+                  </TouchableOpacity>
+                  {!isLast && <InsetDivider inset={68} />}
+                </View>
               );
             })}
           </View>
         )}
 
-        <View
-          style={[
-            styles.infoCard,
-            { backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant },
-          ]}
-        >
-          <UsersIcon color={colors.onSurfaceVariant} size={18} />
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={[styles.infoTitle, { color: colors.onSurface }]}>
-              Staff membership
-            </Text>
-            <Text style={[styles.infoBody, { color: colors.onSurfaceVariant }]}>
-              You are viewing the schedule and roster as Staff. Only Owners and Managers can publish
-              shifts or invite colleagues.
-            </Text>
-          </View>
-        </View>
+        {(() => {
+          const currentMember = members.find((m) => m.userId === currentUserId || m.isSelf);
+          const effectiveRole = userRole || currentMember?.role || Role.STAFF;
+          const isManager = effectiveRole === Role.MANAGER;
+          const isOwner = effectiveRole === Role.OWNER;
+
+          return (
+            <View
+              style={[
+                styles.infoCard,
+                { backgroundColor: colors.surfaceContainerLow },
+              ]}
+            >
+              <UsersIcon color={colors.onSurfaceVariant} size={18} />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[styles.infoTitle, { color: colors.onSurface }]}>
+                  {isOwner ? 'Owner membership' : isManager ? 'Manager membership' : 'Staff membership'}
+                </Text>
+                <Text style={[styles.infoBody, { color: colors.onSurfaceVariant }]}>
+                  {isOwner
+                    ? `You are the owner of ${teamName}. You can manage team members, subscriptions, and publish shifts.`
+                    : isManager
+                    ? `You have manager access for ${teamName}. You can create and publish shifts, manage shift approvals, and invite colleagues.`
+                    : 'You are viewing the schedule and roster as Staff. Only Owners and Managers can publish shifts or invite colleagues.'}
+                </Text>
+              </View>
+            </View>
+          );
+        })()}
       </ScrollView>
     </View>
   );
@@ -193,7 +207,7 @@ const styles = StyleSheet.create({
   },
   listGroup: {
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 0,
     overflow: 'hidden',
     marginBottom: 20,
   },
@@ -223,7 +237,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 16,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 0,
   },
   infoTitle: {
     fontFamily: 'Inter_600SemiBold',

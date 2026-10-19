@@ -1,15 +1,17 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { authConfig } from '../config';
 
-const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'rota-dev-access-secret-at-least-32-chars-long';
-const ACCESS_TOKEN_EXPIRES_IN = '15m';
+const JWT_ACCESS_SECRET = authConfig.jwtAccessSecret;
+const ACCESS_TOKEN_EXPIRES_IN_SECONDS = authConfig.accessTokenExpiresInSeconds;
 
 export const TOKEN_LIFETIMES = {
-  MAGIC_LINK_SECONDS: 15 * 60,         // 15 minutes
-  PASSWORD_RESET_SECONDS: 60 * 60,     // 1 hour
-  INVITATION_SECONDS: 7 * 24 * 60 * 60, // 7 days
-  REFRESH_TOKEN_SECONDS: 30 * 24 * 60 * 60, // 30 days
+  MAGIC_LINK_SECONDS: authConfig.magicLinkExpiresInSeconds,
+  PASSWORD_RESET_SECONDS: authConfig.passwordResetExpiresInSeconds,
+  INVITATION_SECONDS: authConfig.invitationExpiresInSeconds,
+  REFRESH_TOKEN_SECONDS: authConfig.refreshTokenExpiresInSeconds,
+  VERIFICATION_CODE_SECONDS: authConfig.verificationCodeExpiresInSeconds,
 };
 
 export interface AccessTokenPayload {
@@ -19,10 +21,10 @@ export interface AccessTokenPayload {
 }
 
 /**
- * Hashes a plaintext password using bcrypt with a cost factor of 12.
+ * Hashes a plaintext password using bcrypt with a configurable cost factor (default 12).
  */
 export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12);
+  return bcrypt.hash(password, authConfig.bcryptRounds);
 }
 
 /**
@@ -74,7 +76,7 @@ export { VerificationCodeService } from './verification.service';
  */
 export function issueAccessToken(payload: AccessTokenPayload): string {
   return jwt.sign(payload, JWT_ACCESS_SECRET, {
-    expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+    expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
     algorithm: 'HS256',
   });
 }

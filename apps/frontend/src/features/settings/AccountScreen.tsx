@@ -93,7 +93,7 @@ export const AccountScreen: React.FC<AccountScreenProps> = ({ onBack, onLogout }
           Manage sign-in on this and other devices.
         </Text>
 
-        <View style={[styles.card, { backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant }]}>
+        <View style={[styles.card, { backgroundColor: colors.surfaceContainerLowest, borderWidth: 0 }]}>
           <View style={styles.userRow}>
             <View style={[styles.avatar, { backgroundColor: colors.primaryContainer }]}>
               <Text style={[styles.avatarText, { color: colors.onPrimaryContainer }]}>
@@ -113,17 +113,17 @@ export const AccountScreen: React.FC<AccountScreenProps> = ({ onBack, onLogout }
 
         <View style={styles.buttonStack}>
           <TouchableOpacity
-            style={[styles.secondaryButton, { backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }]}
+            style={[styles.secondaryButton, { backgroundColor: colors.surfaceContainerLowest, borderColor: colors.surfaceContainerLow }]}
             onPress={() => setIsLogoutModalVisible(true)}
           >
             <Text style={[styles.secondaryButtonText, { color: colors.onSurface }]}>Log out</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.secondaryButton, { backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }]}
+            style={[styles.secondaryButton, { backgroundColor: colors.errorContainerHigh, borderColor: colors.error }]}
             onPress={() => setIsLogoutAllModalVisible(true)}
           >
-            <Text style={[styles.secondaryButtonText, { color: colors.onSurface }]}>
+            <Text style={[styles.secondaryButtonText, { color: colors.onErrorContainer }]}>
               Log out of all devices
             </Text>
           </TouchableOpacity>

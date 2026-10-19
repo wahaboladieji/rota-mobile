@@ -11,6 +11,8 @@ describe('Tenant Isolation & Role Permission Guards (PRD F1.3, F1.4)', () => {
   let staffId: string;
   let teamId: string;
   let foreignTeamId: string;
+  let foreignOwnerToken: string;
+  let foreignOwnerId: string;
 
   beforeAll(async () => {
     // 1. Create Owner User
@@ -48,9 +50,12 @@ describe('Tenant Isolation & Role Permission Guards (PRD F1.3, F1.4)', () => {
     const foreignOwnerRes = await request(app)
       .post('/api/auth/signup')
       .send({ email: `foreign-owner-${Date.now()}@example.com`, password: 'ForeignPassword123!' });
+    foreignOwnerToken = foreignOwnerRes.body.accessToken;
+    foreignOwnerId = foreignOwnerRes.body.user.id;
+
     const foreignTeamRes = await request(app)
       .post('/api/teams')
-      .set('Authorization', `Bearer ${foreignOwnerRes.body.accessToken}`)
+      .set('Authorization', `Bearer ${foreignOwnerToken}`)
       .send({ name: 'Secret Foreign Corp' });
     foreignTeamId = foreignTeamRes.body.team.id;
   });
@@ -198,6 +203,111 @@ describe('Tenant Isolation & Role Permission Guards (PRD F1.3, F1.4)', () => {
         .set('Authorization', `Bearer ${ownerToken}`);
 
       expect(res.status).toBe(404);
+    });
+
+    it('rejects cross-team write attempts with 404 and leaves foreign record unmodified', async () => {
+      // 1. Create a shift in foreignTeam
+      const foreignShift = await prismaPrimary.shift.create({
+        data: {
+          teamId: foreignTeamId,
+          assigneeId: foreignOwnerId,
+          startAt: new Date(Date.now() + 86400000),
+          endAt: new Date(Date.now() + 86400000 + 8 * 3600000),
+          status: 'PUBLISHED',
+        },
+      });
+
+      // 2. Owner of Team A tries to delete Team B's shift using Team A's URL route
+      const crossRes1 = await request(app)
+        .delete(`/api/teams/${teamId}/shifts/${foreignShift.id}`)
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+      expect(crossRes1.status).toBe(404);
+      expect(crossRes1.body.error).toMatch(/not found/i);
+
+      // 3. Owner of Team A tries to delete Team B's shift by targeting Team B's route directly
+      const crossRes2 = await request(app)
+        .delete(`/api/teams/${foreignTeamId}/shifts/${foreignShift.id}`)
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+      expect(crossRes2.status).toBe(404);
+      expect(crossRes2.body.error).toMatch(/not found/i);
+
+      // 4. Verify foreign shift remains untouched and PUBLISHED
+      const unmodified = await prismaPrimary.shift.findUnique({
+        where: { id: foreignShift.id },
+      });
+      expect(unmodified?.status).toBe('PUBLISHED');
+    });
+  });
+
+  describe('Multi-Team Role Boundaries & Member Removal (PRD F1.3, F6.5)', () => {
+    it('enforces membership-specific role: Owner in Team A has only Staff rights in Team B', async () => {
+      // Add Team A's owner as a STAFF member in foreignTeam
+      await prismaPrimary.membership.create({
+        data: {
+          teamId: foreignTeamId,
+          userId: ownerId,
+          role: Role.STAFF,
+          status: 'ACTIVE',
+        },
+      });
+
+      // Team A Owner attempts Owner-only billing access on Team B -> rejected with 403 Forbidden
+      const billingRes = await request(app)
+        .get(`/api/teams/${foreignTeamId}/billing`)
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+      expect(billingRes.status).toBe(403);
+      expect(billingRes.body.error).toMatch(/forbidden/i);
+
+      // Team A Owner attempts shift deletion on Team B -> rejected with 403 Forbidden
+      const dummyShiftId = '00000000-0000-0000-0000-000000000099';
+      const shiftDeleteRes = await request(app)
+        .delete(`/api/teams/${foreignTeamId}/shifts/${dummyShiftId}`)
+        .set('Authorization', `Bearer ${ownerToken}`);
+
+      expect(shiftDeleteRes.status).toBe(403);
+      expect(shiftDeleteRes.body.error).toMatch(/forbidden/i);
+    });
+
+    it('immediately revokes access and sessions when a member is removed from a team', async () => {
+      // 1. Create a temporary staff user
+      const tempEmail = `temp-staff-${Date.now()}@example.com`;
+      const tempUserRes = await request(app)
+        .post('/api/auth/signup')
+        .send({ email: tempEmail, password: 'Password123!' });
+      const tempToken = tempUserRes.body.accessToken;
+      const tempUserId = tempUserRes.body.user.id;
+
+      // 2. Add as active staff in teamId
+      const membership = await prismaPrimary.membership.create({
+        data: {
+          teamId,
+          userId: tempUserId,
+          role: Role.STAFF,
+          status: 'ACTIVE',
+        },
+      });
+
+      // 3. Verify member can access team shifts
+      const beforeRes = await request(app)
+        .get(`/api/teams/${teamId}/shifts`)
+        .set('Authorization', `Bearer ${tempToken}`);
+      expect(beforeRes.status).toBe(200);
+
+      // 4. Owner removes the member
+      const removeRes = await request(app)
+        .delete(`/api/teams/${teamId}/members/${membership.id}`)
+        .set('Authorization', `Bearer ${ownerToken}`);
+      expect(removeRes.status).toBe(200);
+
+      // 5. Subsequent request with previous credentials should be rejected immediately (session revoked or membership removed)
+      const afterRes = await request(app)
+        .get(`/api/teams/${teamId}/shifts`)
+        .set('Authorization', `Bearer ${tempToken}`);
+
+      expect([401, 404]).toContain(afterRes.status);
     });
   });
 

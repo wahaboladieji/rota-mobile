@@ -4,6 +4,7 @@ import { useTheme } from '../../theme';
 import { Button, FlashIcon } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { apiRequest } from '../../services/api';
+import { useRateLimitCountdown } from '../../services/useRateLimitCountdown';
 import { useAuthStore } from '../../state/authStore';
 import { AuthSessionResponse } from '@rota/shared';
 
@@ -33,6 +34,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const rateLimit = useRateLimitCountdown('Too many login attempts. Please try again in');
 
   useEffect(() => {
     if (initialEmail) {
@@ -113,7 +115,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       });
       await setAuth(data.user, data.accessToken, data.refreshToken);
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Login failed');
+      if (!rateLimit.handleApiError(err)) {
+        setErrorMessage(err instanceof Error ? err.message : 'Login failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -190,7 +194,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         </Text>
       </View>
 
-      {errorMessage ? (
+      {rateLimit.isRateLimited || errorMessage ? (
         <View
           style={[
             styles.errorBanner,
@@ -212,7 +216,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               letterSpacing: typography.roles.bodySmall.letterSpacing,
             }}
           >
-            {errorMessage}
+            {rateLimit.isRateLimited ? rateLimit.formattedMessage : errorMessage}
           </Text>
         </View>
       ) : null}
@@ -263,10 +267,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       />
 
       <Button
-        title="Sign In"
+        title={rateLimit.isRateLimited ? `Try again in ${rateLimit.secondsRemaining}s` : 'Sign In'}
         onPress={handleLogin}
         loading={loading}
-        disabled={email.trim().length === 0 || password.length === 0}
+        disabled={rateLimit.isRateLimited || email.trim().length === 0 || password.length === 0}
         style={{ marginTop: spacingCollection.space100Base }}
       />
 

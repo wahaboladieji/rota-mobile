@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
-import { useTheme, titleMediumText } from '../../theme';
-import { ArrowLeftIcon } from '../../components/ReviewIcons';
+import { useTheme } from '../../theme';
+import { Repeat2Icon, InfoIcon, XIcon } from '../../components/ReviewIcons';
 
 export interface StaffShiftItem {
   id: string;
@@ -14,7 +14,7 @@ export interface StaffShiftItem {
   startTime: string;
   endTime: string;
   weeklyAvailability?: string;
-  status?: 'CURRENT' | 'UPCOMING';
+  status?: 'CURRENT' | 'UPCOMING' | 'COMPLETED';
   avatarInitials?: string;
   dateString?: string;
   startAt?: string;
@@ -22,64 +22,72 @@ export interface StaffShiftItem {
 }
 
 interface ShiftDetailsOwnerScreenProps {
-  shift?: StaffShiftItem;
+  shift: StaffShiftItem;
   teamName: string;
-  onBack: () => void;
+  isOwnShift?: boolean;
+  onBack?: () => void;
   onEditShift: () => void;
   onCancelShift: () => Promise<void> | void;
+  onRequestSwap?: (shift: StaffShiftItem) => void;
 }
 
 export const ShiftDetailsOwnerScreen: React.FC<ShiftDetailsOwnerScreenProps> = ({
-  shift = {
-    id: 's-1',
-    assigneeName: 'Kemi Ade',
-    assigneeRole: 'Staff',
-    date: 'Monday, 12 October',
-    startTime: '09:00',
-    endTime: '17:00',
-    weeklyAvailability: 'Monday · 08:00–18:00',
-  },
+  shift,
   teamName,
+  isOwnShift = false,
   onBack,
   onEditShift,
   onCancelShift,
+  onRequestSwap,
 }) => {
   const { colors } = useTheme();
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
+  const isCompleted =
+    shift.status === 'COMPLETED' ||
+    (shift.endAt ? new Date() > new Date(shift.endAt) : false);
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.surfaceContainerLow }]}>
+      <View style={styles.sheetHeader}>
+        <View style={styles.headerSpacer} />
+        <Text style={[styles.sheetHeaderTitle, { color: colors.onSurface }]}>Shift details</Text>
         <TouchableOpacity
           onPress={onBack}
-          style={[
-            styles.iconButton,
-            { backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant },
-          ]}
+          style={[styles.closeButton, { backgroundColor: colors.surfaceContainerLow }]}
           activeOpacity={0.7}
-          accessibilityLabel="Back"
+          accessibilityLabel="Close"
+          accessibilityRole="button"
         >
-          <ArrowLeftIcon color={colors.onSurface} size={18} />
+          <XIcon color={colors.onSurface} size={18} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.onSurfaceVariant }]}>Shift details</Text>
-        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Published Pill */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Status Pill */}
         <View
           style={[
             styles.statusPill,
             {
-              backgroundColor: colors.surfaceContainerLowest,
+              backgroundColor: isCompleted
+                ? colors.surfaceContainerLow
+                : colors.surfaceContainerLowest,
               borderColor: colors.outlineVariant,
             },
           ]}
         >
-          <Text style={[styles.statusPillText, { color: colors.onPrimaryContainer }]}>
-            Published
+          <Text
+            style={[
+              styles.statusPillText,
+              { color: isCompleted ? colors.onSurfaceVariant : colors.onPrimaryContainer },
+            ]}
+          >
+            {isCompleted ? 'Completed' : 'Published'}
           </Text>
         </View>
 
@@ -91,7 +99,6 @@ export const ShiftDetailsOwnerScreen: React.FC<ShiftDetailsOwnerScreenProps> = (
             styles.card,
             {
               backgroundColor: colors.surfaceContainerLowest,
-              borderColor: colors.outlineVariant,
             },
           ]}
         >
@@ -124,28 +131,91 @@ export const ShiftDetailsOwnerScreen: React.FC<ShiftDetailsOwnerScreenProps> = (
           )}
         </View>
 
-        {/* Stack Actions */}
-        <View style={styles.actionStack}>
-          <TouchableOpacity
-            style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-            onPress={onEditShift}
-          >
-            <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>Edit shift</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
+        {/* Stack Actions or Completed Notice */}
+        {isCompleted ? (
+          <View
             style={[
-              styles.secondaryButton,
-              {
-                backgroundColor: colors.surfaceContainerLowest,
-                borderColor: colors.outlineVariant,
-              },
+              styles.noticeBox,
+              { backgroundColor: colors.surfaceContainerLow, marginTop: 12 },
             ]}
-            onPress={() => setShowCancelModal(true)}
           >
-            <Text style={[styles.secondaryButtonText, { color: colors.error }]}>Cancel shift</Text>
-          </TouchableOpacity>
-        </View>
+            <InfoIcon color={colors.onSurfaceVariant} size={20} />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={[styles.noticeTitle, { color: colors.onSurface }]}>
+                Shift completed
+              </Text>
+              <Text style={[styles.noticeText, { color: colors.onSurfaceVariant }]}>
+                This shift has ended and can no longer be edited, cancelled, or swapped.
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.actionStack}>
+            {isOwnShift && onRequestSwap ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                  onPress={() => onRequestSwap(shift)}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
+                      Request a swap
+                    </Text>
+                    <Repeat2Icon color={colors.onPrimary} size={16} />
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.secondaryButton,
+                    {
+                      backgroundColor: colors.surfaceContainerLowest,
+                      borderColor: colors.outlineVariant,
+                    },
+                  ]}
+                  onPress={onEditShift}
+                >
+                  <Text style={[styles.secondaryButtonText, { color: colors.onSurface }]}>Edit shift</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.secondaryButton,
+                    {
+                      backgroundColor: colors.surfaceContainerLowest,
+                      borderColor: colors.outlineVariant,
+                    },
+                  ]}
+                  onPress={() => setShowCancelModal(true)}
+                >
+                  <Text style={[styles.secondaryButtonText, { color: colors.error }]}>Cancel shift</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                  onPress={onEditShift}
+                >
+                  <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>Edit shift</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.secondaryButton,
+                    {
+                      backgroundColor: colors.surfaceContainerLowest,
+                      borderColor: colors.outlineVariant,
+                    },
+                  ]}
+                  onPress={() => setShowCancelModal(true)}
+                >
+                  <Text style={[styles.secondaryButtonText, { color: colors.error }]}>Cancel shift</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* Cancel Shift Confirmation Modal */}
@@ -211,28 +281,35 @@ export const ShiftDetailsOwnerScreen: React.FC<ShiftDetailsOwnerScreenProps> = (
 
 const styles = StyleSheet.create({
   root: {
-    flex: 1,
+    flexShrink: 1,
   },
-  header: {
-    height: 56,
+  scrollView: {
+    flexShrink: 1,
+  },
+  sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 8,
   },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
+  sheetHeaderTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerTitle: {
-    ...titleMediumText,
-    flex: 1,
-    textAlign: 'center',
+  headerSpacer: {
+    width: 36,
+    height: 36,
   },
   content: {
     padding: 20,
@@ -259,7 +336,7 @@ const styles = StyleSheet.create({
   card: {
     padding: 20,
     borderRadius: 24,
-    borderWidth: 1,
+    borderWidth: 0,
     marginBottom: 24,
   },
   dateText: {
@@ -345,5 +422,22 @@ const styles = StyleSheet.create({
   dangerButtonText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  noticeBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 0,
+  },
+  noticeTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  noticeText: {
+    fontSize: 13,
+    lineHeight: 18,
   },
 });

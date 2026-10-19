@@ -47,6 +47,8 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
   }
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Team authorization guard: resolves active membership on PostgreSQL primary.
  * Enforces role checks and cross-team tenant isolation.
@@ -64,12 +66,24 @@ export function requireTeamMembership(allowedRoles?: Role[]) {
       return;
     }
 
+    if (!UUID_REGEX.test(teamId)) {
+      res.status(404).json({ error: 'Team not found' });
+      return;
+    }
+
     // Resolve membership on PostgreSQL primary to avoid replication lag on access decisions
     const membership = await prismaPrimary.membership.findUnique({
       where: {
         teamId_userId: {
           teamId,
           userId: req.user.userId,
+        },
+      },
+      include: {
+        team: {
+          include: {
+            subscription: true,
+          },
         },
       },
     });
@@ -83,6 +97,18 @@ export function requireTeamMembership(allowedRoles?: Role[]) {
     // Role check
     if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(membership.role as Role)) {
       res.status(403).json({ error: 'Forbidden: Insufficient role permissions for this operation' });
+      return;
+    }
+
+    const subStatus = membership.team.subscription?.status;
+    const url = req.originalUrl || req.url || '';
+    const isBillingOrPayment = url.includes('/billing') || url.includes('/payment');
+
+    // PRD F6.6: RESTRICTED state allows shift reading and Owner billing access, but blocks mutations, invitations, and swaps
+    if (subStatus === 'RESTRICTED' && req.method !== 'GET' && !isBillingOrPayment) {
+      res.status(403).json({
+        error: 'Subscription restricted: Team subscription is restricted due to overdue renewal payment. Read-only access permitted.',
+      });
       return;
     }
 

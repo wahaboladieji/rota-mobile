@@ -238,6 +238,12 @@ const PRIMITIVE_DEFINITIONS = {
   },
 
   // Error Tonal Palette (Red / Destructive & Alert Statuses)
+  'hsl(7, 100%, 97%)': {
+    name: 'primitive-color-error-97',
+    palette: 'error',
+    label: 'Error 97 (Light Error Container High)',
+    tone: 97
+  },
   'hsl(7, 100%, 95%)': {
     name: 'primitive-color-error-95',
     palette: 'error',
@@ -257,12 +263,113 @@ const PRIMITIVE_DEFINITIONS = {
     tone: 29
   },
 
-  // Unresolved Placeholder Token (Magenta)
-  // Per .agents/rules/design-system-rule.md, this token indicates dark mode tokens awaiting design approval
+  // Dark Mode Neutral Tonal Palette (Deep Slate foundations for backgrounds and surfaces)
+  'hsl(220, 15%, 8%)': {
+    name: 'primitive-color-neutral-dark-8',
+    palette: 'neutral',
+    label: 'Neutral Dark 8 (Root Background Canvas)',
+    tone: 8
+  },
+  'hsl(220, 15%, 10%)': {
+    name: 'primitive-color-neutral-dark-10',
+    palette: 'neutral',
+    label: 'Neutral Dark 10 (Base Surface)',
+    tone: 10
+  },
+  'hsl(220, 15%, 6%)': {
+    name: 'primitive-color-neutral-dark-6',
+    palette: 'neutral',
+    label: 'Neutral Dark 6 (Surface Dim / Surface Container Lowest)',
+    tone: 6
+  },
+  'hsl(220, 14%, 11%)': {
+    name: 'primitive-color-neutral-dark-11',
+    palette: 'neutral',
+    label: 'Neutral Dark 11 (Surface Container Low)',
+    tone: 11
+  },
+  'hsl(220, 13%, 14%)': {
+    name: 'primitive-color-neutral-dark-14',
+    palette: 'neutral',
+    label: 'Neutral Dark 14 (Surface Container Standard)',
+    tone: 14
+  },
+  'hsl(220, 12%, 17%)': {
+    name: 'primitive-color-neutral-dark-17',
+    palette: 'neutral',
+    label: 'Neutral Dark 17 (Surface Container High)',
+    tone: 17
+  },
+  'hsl(220, 11%, 20%)': {
+    name: 'primitive-color-neutral-dark-20',
+    palette: 'neutral',
+    label: 'Neutral Dark 20 (Surface Container Highest)',
+    tone: 20
+  },
+  'hsl(220, 12%, 20%)': {
+    name: 'primitive-color-neutral-dark-bright-20',
+    palette: 'neutral',
+    label: 'Neutral Dark 20 (Surface Bright)',
+    tone: 20
+  },
+  'hsl(220, 13%, 15%)': {
+    name: 'primitive-color-neutral-dark-15',
+    palette: 'neutral',
+    label: 'Neutral Dark 15 (Neutral 99 Dark Notice Surface)',
+    tone: 15
+  },
+
+  // Dark Mode Error Tonal Palette (Accessible Crimson & Maroon)
+  'hsl(358, 100%, 69%)': {
+    name: 'primitive-color-error-dark-69',
+    palette: 'error',
+    label: 'Error Dark 69 (Bright Coral Red / Accessible Dark Error Accent)',
+    tone: 69
+  },
+  'hsl(359, 100%, 15%)': {
+    name: 'primitive-color-error-dark-15',
+    palette: 'error',
+    label: 'Error Dark 15 (Deep Maroon / Dark On-Error Button Text)',
+    tone: 15
+  },
+  'hsl(359, 70%, 18%)': {
+    name: 'primitive-color-error-dark-18',
+    palette: 'error',
+    label: 'Error Dark 18 (Dark Crimson Error Container)',
+    tone: 18
+  },
+  'hsl(359, 65%, 24%)': {
+    name: 'primitive-color-error-dark-24',
+    palette: 'error',
+    label: 'Error Dark 24 (Highlighted Dark Error Container)',
+    tone: 24
+  },
+  'hsl(7, 100%, 88%)': {
+    name: 'primitive-color-error-dark-88',
+    palette: 'error',
+    label: 'Error Dark 88 (Light Coral Pink / Dark On-Error-Container)',
+    tone: 88
+  },
+  'hsl(359, 50%, 13%)': {
+    name: 'primitive-color-error-dark-13',
+    palette: 'error',
+    label: 'Error Dark 13 (Muted Dark Cancellation Card Background)',
+    tone: 13
+  },
+
+  // Dark Mode Primary Tint
+  'hsl(221, 55%, 20%)': {
+    name: 'primitive-color-primary-dark-20',
+    palette: 'primary',
+    label: 'Primary Dark 20 (Deep Blue Container Tint)',
+    tone: 20
+  },
+
+  // Unresolved Placeholder Token (Magenta) - Retained for backward fallback
   'hsl(300, 100%, 50%)': {
     name: 'primitive-color-magenta-unresolved',
     palette: 'unresolved',
-    label: 'Unresolved Magenta Placeholder (Blocked per design-system-rule.md)',
+    label: 'Unresolved Magenta Placeholder',
     tone: 50
   }
 };

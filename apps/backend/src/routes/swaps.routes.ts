@@ -10,6 +10,7 @@ import { prismaPrimary } from '../data/db';
 import { authenticate, requireTeamMembership, AuthenticatedRequest } from '../auth/guards';
 import { logger } from '../observability/logger';
 import { enqueuePushJob } from '../jobs/queue';
+import { schedulingConfig } from '../config';
 
 export const swapsRouter = Router();
 
@@ -73,6 +74,17 @@ swapsRouter.post(
     const { teamId } = req.params;
     const userId = req.user!.userId;
 
+    // PRD D1: Initial teams stay in PENDING_INITIAL_PAYMENT until subscribed; swaps are blocked
+    const subscription = await prismaPrimary.subscription.findUnique({
+      where: { teamId },
+    });
+    if (subscription?.status === 'PENDING_INITIAL_PAYMENT') {
+      res.status(403).json({
+        error: 'Subscription required: Complete initial payment before requesting swaps',
+      });
+      return;
+    }
+
     const parseResult = CreateSwapInputSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({ error: 'Validation failed', details: parseResult.error.flatten() });
@@ -98,6 +110,11 @@ swapsRouter.post(
 
     if (!shift) {
       res.status(404).json({ error: 'Shift not found or not assigned to you' });
+      return;
+    }
+
+    if (shift.endAt <= new Date()) {
+      res.status(400).json({ error: 'Cannot swap a shift that has already completed' });
       return;
     }
 
@@ -160,12 +177,14 @@ swapsRouter.post(
 
     logger.info('Swap requested', { swapId: swap.id, teamId, requesterId: userId, colleagueId });
 
-    // Enqueue background push notification to colleague
+    // Enqueue background push notification to colleague (swap requests wait until quiet hours end per PRD F7.5)
     const requesterName = req.user!.email ? req.user!.email.split('@')[0] : 'A teammate';
     enqueuePushJob({
       userId: colleagueId,
       teamId,
       group: 'SWAP',
+      eventType: 'SWAP_REQUEST',
+      isUrgent: false,
       title: 'Shift Swap Request 🔄',
       body: `${requesterName} wants to swap a shift with you. Tap to review.`,
       data: {
@@ -349,6 +368,12 @@ swapsRouter.post(
       return;
     }
 
+    // AGENTS.md rule 15 & PRD F3: Self-approval is prohibited to preserve two independent decisions
+    if (swap.requesterId === userId) {
+      res.status(403).json({ error: 'Self-approval is prohibited. Another Manager or Owner must review this swap request.' });
+      return;
+    }
+
     // Recheck versions and assignments in one atomic transaction (AGENTS.md rule 15)
     const result = await prismaPrimary.$transaction(async (tx) => {
       const currentShift = await tx.shift.findUnique({
@@ -427,11 +452,20 @@ swapsRouter.post(
       ? 'A manager has approved your shift swap. Schedules have been updated.'
       : 'A manager declined your shift swap request.';
 
+    const shiftStart = swap.requesterShift ? swap.requesterShift.startAt.getTime() : 0;
+    const timeToShift = shiftStart - Date.now();
+    const urgentMs = schedulingConfig.urgentShiftThresholdHours * 60 * 60 * 1000;
+    const isUrgent = timeToShift > 0 && timeToShift <= urgentMs;
+    const shiftStartAt = swap.requesterShift?.startAt?.toISOString();
+
     // Notify requester
     enqueuePushJob({
       userId: swap.requesterId,
       teamId,
       group: 'SWAP',
+      eventType: isApproved ? 'SWAP_APPROVAL' : 'SWAP_REJECTION',
+      isUrgent,
+      shiftStartAt,
       title,
       body,
       data: {
@@ -446,6 +480,9 @@ swapsRouter.post(
       userId: swap.colleagueId,
       teamId,
       group: 'SWAP',
+      eventType: isApproved ? 'SWAP_APPROVAL' : 'SWAP_REJECTION',
+      isUrgent,
+      shiftStartAt,
       title,
       body,
       data: {

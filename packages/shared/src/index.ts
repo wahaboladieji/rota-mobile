@@ -5,3 +5,4 @@ export * from './teams';
 export * from './shifts';
 export * from './swaps';
 export * from './preferences';
+export * from './activity';

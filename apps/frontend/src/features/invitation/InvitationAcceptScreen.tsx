@@ -97,9 +97,24 @@ export const InvitationAcceptScreen: React.FC<InvitationAcceptScreenProps> = ({
     }
   };
 
+  const [switching, setSwitching] = useState(false);
+
   const handleSwitchAccount = async () => {
-    await logout();
-    onNavigateToLogin(invite?.email);
+    setSwitching(true);
+    try {
+      try {
+        await apiRequest('/api/auth/logout', {
+          method: 'POST',
+          requiresAuth: true,
+        });
+      } catch {
+        // Network fallback
+      }
+      await logout();
+      await queryClient.clear();
+    } finally {
+      setSwitching(false);
+    }
   };
 
   // 1. Loading state
@@ -236,15 +251,16 @@ export const InvitationAcceptScreen: React.FC<InvitationAcceptScreenProps> = ({
           <View
             style={[
               styles.noticeBox,
-              { backgroundColor: colors.errorContainer, borderColor: colors.error },
+              { backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant },
             ]}
           >
-            <Text style={[styles.noticeTitle, { color: colors.onErrorContainer }]}>
-              Different account detected
+            <Text style={[styles.noticeTitle, { color: colors.onSurface }]}>
+              Account switch required
             </Text>
-            <Text style={[styles.noticeText, { color: colors.onErrorContainer }]}>
-              You are signed in as {user.email}, but this invitation was sent to {invite.email}.
-              Please switch accounts to accept.
+            <Text style={[styles.noticeText, { color: colors.onSurfaceVariant, marginTop: 4 }]}>
+              This invitation was sent to{' '}
+              <Text style={{ fontWeight: '600', color: colors.onSurface }}>{invite.email}</Text>.
+              You are currently signed in with a different account.
             </Text>
           </View>
         )}
@@ -299,14 +315,42 @@ export const InvitationAcceptScreen: React.FC<InvitationAcceptScreenProps> = ({
           )}
 
           {isDifferentUser && (
-            <TouchableOpacity
-              style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-              onPress={handleSwitchAccount}
-            >
-              <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
-                Switch account
-              </Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  { backgroundColor: colors.primary },
+                  switching && { opacity: 0.7 },
+                ]}
+                onPress={handleSwitchAccount}
+                disabled={switching}
+              >
+                {switching ? (
+                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                ) : (
+                  <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
+                    Switch to invited account
+                  </Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.secondaryButton,
+                  {
+                    backgroundColor: colors.surfaceContainerLowest,
+                    borderColor: colors.outlineVariant,
+                    marginTop: 12,
+                  },
+                ]}
+                onPress={onCancel}
+                disabled={switching}
+              >
+                <Text style={[styles.secondaryButtonText, { color: colors.onSurfaceVariant }]}>
+                  Keep current account & cancel
+                </Text>
+              </TouchableOpacity>
+            </>
           )}
 
           {user && isMatchingUser && (

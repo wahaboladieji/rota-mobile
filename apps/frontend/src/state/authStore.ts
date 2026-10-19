@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { AuthUser } from '@rota/shared';
+import { appConfig } from '../config';
 
 // Safe wrapper for SecureStore to prevent crashes when running in Expo Go or builds without the native module compiled
 let SecureStore: typeof import('expo-secure-store') | null = null;
@@ -26,7 +27,7 @@ interface AuthState {
   loadSavedAuth: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   accessToken: null,
   refreshToken: null,
@@ -62,6 +63,17 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
+    const currentToken = get().accessToken;
+    if (currentToken) {
+      fetch(`${appConfig.apiUrl}/api/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentToken}`,
+        },
+      }).catch(() => {});
+    }
+
     if (SecureStore) {
       try {
         await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);

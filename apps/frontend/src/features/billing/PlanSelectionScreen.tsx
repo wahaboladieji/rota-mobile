@@ -6,6 +6,8 @@ import { CheckIcon, ArrowLeftIcon } from '../../components/ReviewIcons';
 
 interface PlanSelectionScreenProps {
   selectedPlan: PlanCode;
+  currentPlan?: PlanCode;
+  isCurrentPlanActive?: boolean;
   onSelectPlan: (plan: PlanCode) => void;
   onContinue: (plan: PlanCode) => void;
   onBack: () => void;
@@ -13,6 +15,8 @@ interface PlanSelectionScreenProps {
 
 export const PlanSelectionScreen: React.FC<PlanSelectionScreenProps> = ({
   selectedPlan,
+  currentPlan,
+  isCurrentPlanActive = false,
   onSelectPlan,
   onContinue,
   onBack,
@@ -78,6 +82,7 @@ export const PlanSelectionScreen: React.FC<PlanSelectionScreenProps> = ({
         <View style={styles.stack}>
           {planOptions.map((item) => {
             const isSelected = selectedPlan === item.code;
+            const isActive = isCurrentPlanActive && currentPlan === item.code;
             return (
               <TouchableOpacity
                 key={item.code}
@@ -89,7 +94,7 @@ export const PlanSelectionScreen: React.FC<PlanSelectionScreenProps> = ({
                     backgroundColor: isSelected
                       ? colors.primaryContainer
                       : colors.surfaceContainerLowest,
-                    borderColor: isSelected ? colors.primary : colors.outlineVariant,
+                    borderColor: isSelected ? colors.primary : colors.surfaceContainer,
                   },
                 ]}
               >
@@ -104,16 +109,14 @@ export const PlanSelectionScreen: React.FC<PlanSelectionScreenProps> = ({
                   >
                     {item.name}
                   </Text>
-                  {isSelected && (
-                    <View
-                      style={[
-                        styles.checkCircle,
-                        { backgroundColor: colors.primary },
-                      ]}
-                    >
-                      <CheckIcon color={colors.onPrimary} size={14} />
+                  {isActive ? (
+                    <View style={[styles.activeChip, { backgroundColor: colors.primary }]}>
+                      <CheckIcon color={colors.onPrimary} size={12} />
+                      <Text style={[styles.activeChipText, { color: colors.onPrimary }]}>
+                        Current plan
+                      </Text>
                     </View>
-                  )}
+                  ) : null}
                 </View>
 
                 <View style={styles.priceRow}>
@@ -228,12 +231,7 @@ const styles = StyleSheet.create({
   planCard: {
     padding: 20,
     borderRadius: 24,
-    borderWidth: 1.5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 1,
+    borderWidth: 1,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -244,12 +242,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
-  checkCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    justifyContent: 'center',
+  activeChip: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 9999,
+  },
+  activeChipText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   priceRow: {
     flexDirection: 'row',

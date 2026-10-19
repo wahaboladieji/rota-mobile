@@ -125,7 +125,7 @@ export const PaymentReviewScreen: React.FC<PaymentReviewScreenProps> = ({
           activeOpacity={0.8}
         >
           <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
-            Continue to test checkout
+            Proceed to checkout
           </Text>
         </TouchableOpacity>
       </View>

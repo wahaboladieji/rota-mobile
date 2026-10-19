@@ -76,7 +76,15 @@ export const CreateShiftScreen: React.FC<CreateShiftScreenProps> = ({
 
   const selectedMember = members.find((m) => m.userId === selectedMemberId);
 
+  const isShiftCompleted =
+    shiftToEdit?.status === 'COMPLETED' ||
+    (shiftToEdit?.endAt ? new Date() > new Date(shiftToEdit.endAt) : false);
+
   const handlePublish = async () => {
+    if (isEditing && isShiftCompleted) {
+      setErrorMessage('Completed shifts cannot be edited.');
+      return;
+    }
     if (!selectedMemberId) {
       setErrorMessage('Please select a member to assign this shift to.');
       return;
@@ -297,15 +305,26 @@ export const CreateShiftScreen: React.FC<CreateShiftScreenProps> = ({
       {/* Footer Button */}
       <View style={[styles.footer, { backgroundColor: colors.background }]}>
         <TouchableOpacity
-          style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+          style={[
+            styles.primaryButton,
+            {
+              backgroundColor: isShiftCompleted ? colors.surfaceContainerHigh : colors.primary,
+              opacity: publishing || isLoadingMembers || isShiftCompleted ? 0.6 : 1,
+            },
+          ]}
           onPress={handlePublish}
-          disabled={publishing || isLoadingMembers}
+          disabled={publishing || isLoadingMembers || isShiftCompleted}
         >
           {publishing ? (
             <ActivityIndicator color={colors.onPrimary} size="small" />
           ) : (
-            <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
-              {isEditing ? 'Save changes' : 'Publish shift'}
+            <Text
+              style={[
+                styles.primaryButtonText,
+                { color: isShiftCompleted ? colors.onSurfaceVariant : colors.onPrimary },
+              ]}
+            >
+              {isShiftCompleted ? 'Shift completed' : isEditing ? 'Save changes' : 'Publish shift'}
             </Text>
           )}
         </TouchableOpacity>

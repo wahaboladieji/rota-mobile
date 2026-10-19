@@ -12,12 +12,17 @@ import { swapsRouter } from './routes/swaps.routes';
 import { preferencesRouter } from './routes/preferences.routes';
 import { activityRouter } from './routes/activity.routes';
 import { devicesRouter } from './routes/devices.routes';
+import { webhooksRouter } from './routes/webhooks.routes';
+import { paymentCallbackRouter } from './routes/payment-callback.routes';
 import { logger } from './observability/logger';
+import { generalApiRateLimiter } from './middleware/rate-limiter';
 
 export const app = express();
 
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
+app.use(generalApiRateLimiter);
 
 // Correlation ID & Request Logging Middleware
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -40,9 +45,16 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Health check endpoint
+import { getPoolConfig } from './data/db';
+
+// Health check endpoint with database pool diagnostics
 app.get('/health', (_req: Request, res: Response) => {
-  res.status(200).json({ status: 'ok', service: 'rota-api', timestamp: new Date().toISOString() });
+  res.status(200).json({
+    status: 'ok',
+    service: 'rota-api',
+    pool: getPoolConfig(),
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Routes
@@ -55,6 +67,8 @@ app.use('/api', preferencesRouter);
 app.use('/api', activityRouter);
 app.use('/api', devicesRouter);
 app.use('/', devicesRouter);
+app.use('/api', webhooksRouter);
+app.use('/api', paymentCallbackRouter);
 
 // 404 handler
 app.use((_req: Request, res: Response) => {
@@ -64,6 +78,22 @@ app.use((_req: Request, res: Response) => {
 // Global Error Handler (Never leak secrets or stack traces to client)
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   const requestId = (req as unknown as { requestId?: string }).requestId;
+
+  // Handle bounded pool waiting timeout (Prisma P2024: pool exhaustion)
+  if ((err as { code?: string })?.code === 'P2024') {
+    logger.warn('Database connection pool exhausted; shedding load with 503', {
+      requestId,
+      error: err.message,
+    });
+    res.setHeader('Retry-After', '1');
+    res.status(503).json({
+      error: 'Database connection pool is temporarily saturated. Please retry shortly.',
+      code: 'POOL_EXHAUSTED',
+      requestId,
+    });
+    return;
+  }
+
   logger.error('Unhandled server exception', err, { requestId });
   res.status(500).json({ error: 'Internal server error', requestId });
 });

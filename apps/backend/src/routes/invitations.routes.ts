@@ -4,7 +4,9 @@ import { authenticate, AuthenticatedRequest } from '../auth/guards';
 import { hashToken } from '../auth/tokens';
 import { prismaPrimary } from '../data/db';
 import { Role } from '@rota/shared';
+import { serverConfig } from '../config';
 import { logger } from '../observability/logger';
+import { invalidateCache } from '../services/cache.service';
 
 export const invitationsRouter = Router();
 
@@ -35,9 +37,10 @@ invitationsRouter.get('/invite/:token', async (req: Request, res: Response) => {
     });
   }
 
-  const apiBaseUrl = process.env.API_BASE_URL || 'http://192.168.0.165:3000';
+  const apiBaseUrl = serverConfig.apiBaseUrl;
   const hostIp = apiBaseUrl.replace(/^https?:\/\//, '').split(':')[0] || '192.168.0.165';
-  const deepLink = `rota://invite/${encodeURIComponent(token)}`;
+  const appBase = serverConfig.appBaseUrl.endsWith('/') ? serverConfig.appBaseUrl : `${serverConfig.appBaseUrl}/`;
+  const deepLink = `${appBase}invite/${encodeURIComponent(token)}`;
   const expoLink = `exp://${hostIp}:8081/--/invite/${encodeURIComponent(token)}`;
 
   if (!invitation || invitation.revokedAt || invitation.acceptedAt || invitation.expiresAt < now) {
@@ -393,6 +396,9 @@ invitationsRouter.post('/api/invitations/:token/accept', authenticate, async (re
       teamId: result.membership.teamId,
       role: result.role,
     });
+
+    await invalidateCache(`cache:user:${currentUserId}:me`);
+    await invalidateCache(`cache:team:${result.membership.teamId}:members`);
 
     res.status(200).json({
       message: 'Invitation accepted successfully',

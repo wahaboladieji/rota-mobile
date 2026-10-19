@@ -5,14 +5,26 @@ import {
   InitiatePaymentInputSchema,
   VerifyPaymentInputSchema,
   CreateInvitationInputSchema,
+  QuotePlanInputSchema,
+  QuoteSeatsInputSchema,
   PLANS,
 } from '@rota/shared';
 import { prismaPrimary } from '../data/db';
+import { serverConfig, schedulingConfig } from '../config';
 import { hashToken } from '../auth/tokens';
 import { authenticate, requireTeamMembership, AuthenticatedRequest } from '../auth/guards';
 import { logger } from '../observability/logger';
 import { enqueueEmailJob } from '../jobs/queue';
 import { sendInvitationEmail } from '../services/mailer.service';
+import { FlutterwaveAdapter } from '../payments/flutterwave';
+import { verifyAndSettlePaymentAttempt } from '../domain/payment-settlement.service';
+import {
+  calculatePlanChangeProration,
+  calculateSeatChangeProration,
+  calculateMonthlyPrice,
+} from '../domain/proration.service';
+import { invitationsRateLimiter, paymentInitiateRateLimiter } from '../middleware/rate-limiter';
+import { getOrSetCache, invalidateCache, CACHE_TTL } from '../services/cache.service';
 
 export const teamsRouter = Router();
 
@@ -25,32 +37,42 @@ teamsRouter.get('/me', authenticate, async (req: AuthenticatedRequest, res: Resp
     return;
   }
 
-  const user = await prismaPrimary.user.findUnique({
-    where: { id: req.user.userId },
-    include: {
-      memberships: {
-        where: { status: 'ACTIVE' },
-        include: { team: true },
-      },
-    },
-  });
+  const userProfile = await getOrSetCache(
+    `cache:user:${req.user.userId}:me`,
+    CACHE_TTL.USER_PROFILE,
+    async () => {
+      const user = await prismaPrimary.user.findUnique({
+        where: { id: req.user!.userId },
+        include: {
+          memberships: {
+            where: { status: 'ACTIVE' },
+            include: { team: true },
+          },
+        },
+      });
 
-  if (!user) {
+      if (!user) return null;
+
+      return {
+        id: user.id,
+        email: user.email,
+        memberships: user.memberships.map((m) => ({
+          id: m.id,
+          teamId: m.teamId,
+          name: m.team.name,
+          role: m.role,
+          joinedAt: m.joinedAt.toISOString(),
+        })),
+      };
+    }
+  );
+
+  if (!userProfile) {
     res.status(404).json({ error: 'User not found' });
     return;
   }
 
-  res.status(200).json({
-    id: user.id,
-    email: user.email,
-    memberships: user.memberships.map((m) => ({
-      id: m.id,
-      teamId: m.teamId,
-      name: m.team.name,
-      role: m.role,
-      joinedAt: m.joinedAt.toISOString(),
-    })),
-  });
+  res.status(200).json(userProfile);
 });
 
 /**
@@ -70,7 +92,7 @@ teamsRouter.post('/teams', authenticate, async (req: AuthenticatedRequest, res: 
 
   const { name } = parseResult.data;
   const now = new Date();
-  const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30-day baseline
+  const periodEnd = new Date(now.getTime() + schedulingConfig.baselineBillingPeriodDays * 24 * 60 * 60 * 1000); // Baseline billing period from config
 
   const result = await prismaPrimary.$transaction(async (tx) => {
     const team = await tx.team.create({
@@ -110,6 +132,8 @@ teamsRouter.post('/teams', authenticate, async (req: AuthenticatedRequest, res: 
       },
     };
   });
+
+  await invalidateCache(`cache:user:${req.user.userId}:me`);
 
   logger.info('Team created with Owner membership', {
     teamId: result.team.id,
@@ -157,11 +181,13 @@ teamsRouter.get(
 
 
 /**
- * GET /api/plans - Retrieve available subscription plans
+ * GET /api/plans - Retrieve available subscription plans (Cached with 1-hour TTL)
  */
 teamsRouter.get('/plans', async (_req, res: Response) => {
-  const plans = await prismaPrimary.plan.findMany({
-    orderBy: { basePriceCents: 'asc' },
+  const plans = await getOrSetCache('cache:plans', CACHE_TTL.PLANS, async () => {
+    return prismaPrimary.plan.findMany({
+      orderBy: { basePriceCents: 'asc' },
+    });
   });
   res.status(200).json({ plans });
 });
@@ -234,19 +260,200 @@ teamsRouter.get(
         periodEnd: sub.periodEnd.toISOString(),
         nextRenewalAmountCents,
         graceEndAt: sub.graceEndAt ? sub.graceEndAt.toISOString() : null,
+        pendingPlanCode: sub.pendingPlanCode || null,
       },
     });
   }
 );
 
 /**
- * POST /api/teams/:teamId/payment/initiate - Initiate a payment attempt for a plan
- * Restricted to Owner. Validates plan code and records payment attempt with idempotency key.
+ * POST /api/teams/:teamId/billing/cancel - Schedule subscription cancellation at periodEnd
+ * Restricted to Owner.
+ */
+teamsRouter.post(
+  '/teams/:teamId/billing/cancel',
+  authenticate,
+  requireTeamMembership([Role.OWNER]),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const teamId = req.params.teamId;
+
+    const subscription = await prismaPrimary.subscription.findUnique({
+      where: { teamId },
+    });
+
+    if (!subscription) {
+      res.status(404).json({ error: 'Subscription not found' });
+      return;
+    }
+
+    if (subscription.status === 'PENDING_INITIAL_PAYMENT') {
+      res.status(400).json({ error: 'Cannot cancel an unsubscribed team' });
+      return;
+    }
+
+    await prismaPrimary.subscription.update({
+      where: { id: subscription.id },
+      data: { pendingPlanCode: 'CANCELLED' },
+    });
+
+    logger.info('Subscription cancellation scheduled at period end', {
+      teamId,
+      subscriptionId: subscription.id,
+      effectiveAt: subscription.periodEnd,
+    });
+
+    res.status(200).json({
+      success: true,
+      cancelAtPeriodEnd: true,
+      status: 'SCHEDULED_AT_PERIOD_END',
+      message: `Subscription cancellation scheduled for ${subscription.periodEnd.toISOString()}. Full access remains active until then.`,
+      pendingPlanCode: 'CANCELLED',
+      effectiveAt: subscription.periodEnd.toISOString(),
+    });
+  }
+);
+
+/**
+ * POST /api/teams/:teamId/billing/resume - Resume scheduled subscription cancellation
+ * Restricted to Owner.
+ */
+teamsRouter.post(
+  '/teams/:teamId/billing/resume',
+  authenticate,
+  requireTeamMembership([Role.OWNER]),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const teamId = req.params.teamId;
+
+    const subscription = await prismaPrimary.subscription.findUnique({
+      where: { teamId },
+    });
+
+    if (!subscription) {
+      res.status(404).json({ error: 'Subscription not found' });
+      return;
+    }
+
+    await prismaPrimary.subscription.update({
+      where: { id: subscription.id },
+      data: { pendingPlanCode: null },
+    });
+
+    logger.info('Subscription cancellation reverted / resumed', {
+      teamId,
+      subscriptionId: subscription.id,
+    });
+
+    res.status(200).json({
+      success: true,
+      cancelAtPeriodEnd: false,
+      status: 'ACTIVE',
+      message: `Subscription resumed. Automatic renewal will proceed on ${subscription.periodEnd.toISOString()}.`,
+      pendingPlanCode: null,
+    });
+  }
+);
+
+/**
+ * POST /api/teams/:teamId/billing/quote-plan - Quote plan upgrade or downgrade proration
+ * Restricted to Owner.
+ */
+teamsRouter.post(
+  '/teams/:teamId/billing/quote-plan',
+  authenticate,
+  requireTeamMembership([Role.OWNER]),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const teamId = req.params.teamId;
+    const parseResult = QuotePlanInputSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({ error: 'Validation failed', details: parseResult.error.flatten() });
+      return;
+    }
+
+    const { targetPlanCode, targetSeats, effectiveDate } = parseResult.data;
+
+    const subscription = await prismaPrimary.subscription.findUnique({
+      where: { teamId },
+      include: { plan: true },
+    });
+
+    if (!subscription) {
+      res.status(404).json({ error: 'Subscription not found' });
+      return;
+    }
+
+    try {
+      const quote = calculatePlanChangeProration({
+        fromPlan: subscription.planCode,
+        toPlan: targetPlanCode,
+        paidSeats: subscription.paidSeatEntitlement,
+        activeSeats: targetSeats ?? subscription.activeMemberCount,
+        periodStart: subscription.periodStart,
+        periodEnd: subscription.periodEnd,
+        changedAt: effectiveDate ? new Date(effectiveDate) : new Date(),
+      });
+
+      res.status(200).json(quote);
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to quote plan change' });
+    }
+  }
+);
+
+/**
+ * POST /api/teams/:teamId/billing/quote-seats - Quote seat change proration
+ * Restricted to Owner.
+ */
+teamsRouter.post(
+  '/teams/:teamId/billing/quote-seats',
+  authenticate,
+  requireTeamMembership([Role.OWNER]),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const teamId = req.params.teamId;
+    const parseResult = QuoteSeatsInputSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({ error: 'Validation failed', details: parseResult.error.flatten() });
+      return;
+    }
+
+    const { targetSeats, effectiveDate } = parseResult.data;
+
+    const subscription = await prismaPrimary.subscription.findUnique({
+      where: { teamId },
+      include: { plan: true },
+    });
+
+    if (!subscription) {
+      res.status(404).json({ error: 'Subscription not found' });
+      return;
+    }
+
+    try {
+      const quote = calculateSeatChangeProration({
+        plan: subscription.planCode,
+        activeBefore: subscription.paidSeatEntitlement,
+        activeAfter: targetSeats,
+        paidSeats: subscription.paidSeatEntitlement,
+        periodStart: subscription.periodStart,
+        periodEnd: subscription.periodEnd,
+        changedAt: effectiveDate ? new Date(effectiveDate) : new Date(),
+      });
+
+      res.status(200).json(quote);
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to quote seat change' });
+    }
+  }
+);
+
+/**
+ * POST /api/teams/:teamId/payment/initiate - Initiate a payment attempt for a plan or seat upgrade
+ * Restricted to Owner. Handles initial subscription, mid-period prorated upgrades, and scheduled downgrades.
  */
 teamsRouter.post(
   '/teams/:teamId/payment/initiate',
   authenticate,
   requireTeamMembership([Role.OWNER]),
+  paymentInitiateRateLimiter,
   async (req: AuthenticatedRequest, res: Response) => {
     const teamId = req.params.teamId;
     const parseResult = InitiatePaymentInputSchema.safeParse(req.body);
@@ -255,9 +462,9 @@ teamsRouter.post(
       return;
     }
 
-    const { planCode, idempotencyKey } = parseResult.data;
+    const { planCode, targetSeats, idempotencyKey } = parseResult.data;
 
-    // Check existing attempt with same idempotency key
+    // Check existing attempt with same idempotency key (idempotency safety)
     const existing = await prismaPrimary.paymentAttempt.findUnique({
       where: { idempotencyKey },
     });
@@ -288,25 +495,187 @@ teamsRouter.post(
       return;
     }
 
+    // D5 Decision validation: Starter has strict 5-seat cap; Team & Business require >= includedSeats
+    const desiredSeats = targetSeats ?? plan.includedSeats;
+    if (planCode === 'STARTER' && desiredSeats > 5) {
+      res.status(400).json({
+        error: 'Starter plan is limited to 5 seats. Upgrade to Team or Business for extra seats.',
+      });
+      return;
+    }
+    if (desiredSeats < plan.includedSeats) {
+      res.status(400).json({
+        error: `Cannot select fewer than ${plan.includedSeats} included seats for ${planCode}`,
+      });
+      return;
+    }
+
+    let chargeAmountCents = 0;
+    let isMidPeriodUpgrade = false;
+    let quoteMetadata: Record<string, unknown> = {};
+
+    const now = new Date();
+
+    try {
+      if (subscription.status === 'PENDING_INITIAL_PAYMENT') {
+        // Initial subscription setup: charges full monthly plan price
+        chargeAmountCents = calculateMonthlyPrice(planCode, desiredSeats);
+      } else {
+        // Existing active or past_due subscription
+        if (subscription.planCode === planCode) {
+          // Seat change on the same plan
+          if (desiredSeats < subscription.paidSeatEntitlement) {
+            // Seat reduction: scheduled for next period per AGENTS.md rule 9 (no immediate refund)
+            await prismaPrimary.subscription.update({
+              where: { id: subscription.id },
+              data: { pendingPlanCode: planCode },
+            });
+            res.status(200).json({
+              status: 'SCHEDULED_AT_PERIOD_END',
+              message: `Seat reduction to ${desiredSeats} seats scheduled for next billing period on ${subscription.periodEnd.toISOString()}`,
+              targetSeats: desiredSeats,
+              effectiveAt: subscription.periodEnd.toISOString(),
+            });
+            return;
+          }
+
+          const quote = calculateSeatChangeProration({
+            plan: planCode,
+            activeBefore: subscription.paidSeatEntitlement,
+            activeAfter: desiredSeats,
+            paidSeats: subscription.paidSeatEntitlement,
+            periodStart: subscription.periodStart,
+            periodEnd: subscription.periodEnd,
+            changedAt: now,
+          });
+
+          chargeAmountCents = quote.dueNowCents;
+          isMidPeriodUpgrade = true;
+          quoteMetadata = { ...quote };
+        } else {
+          // Plan change
+          const quote = calculatePlanChangeProration({
+            fromPlan: subscription.planCode,
+            toPlan: planCode,
+            paidSeats: subscription.paidSeatEntitlement,
+            activeSeats: desiredSeats,
+            periodStart: subscription.periodStart,
+            periodEnd: subscription.periodEnd,
+            changedAt: now,
+          });
+
+          if (quote.isDowngrade) {
+            // Downgrade: scheduled for next period per PRD Section 8 / AGENTS.md rule 9
+            await prismaPrimary.subscription.update({
+              where: { id: subscription.id },
+              data: { pendingPlanCode: planCode },
+            });
+            res.status(200).json({
+              status: 'SCHEDULED_AT_PERIOD_END',
+              message: `Downgrade to ${planCode} scheduled for next billing period on ${subscription.periodEnd.toISOString()}`,
+              pendingPlanCode: planCode,
+              effectiveAt: subscription.periodEnd.toISOString(),
+            });
+            return;
+          }
+
+          chargeAmountCents = quote.dueNowCents;
+          isMidPeriodUpgrade = true;
+          quoteMetadata = { ...quote };
+        }
+      }
+    } catch (calcErr: unknown) {
+      res.status(400).json({ error: calcErr instanceof Error ? calcErr.message : 'Proration calculation failed' });
+      return;
+    }
+
+    if (chargeAmountCents <= 0) {
+      res.status(400).json({ error: 'No charge due for this operation' });
+      return;
+    }
+
+    const user = await prismaPrimary.user.findUnique({
+      where: { id: req.user!.userId },
+    });
+
     const txRef = `rota_tx_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    const attempt = await prismaPrimary.paymentAttempt.create({
-      data: {
-        teamId,
-        subscriptionId: subscription.id,
-        idempotencyKey,
+
+    // Call Flutterwave provider adapter to create hosted checkout link
+    let checkoutUrl = '';
+    try {
+      const apiBase = serverConfig.apiBaseUrl;
+      const flwInit = await FlutterwaveAdapter.initializePayment({
         txRef,
-        provider: 'FLUTTERWAVE_TEST',
-        expectedAmountCents: plan.basePriceCents,
+        amountCents: chargeAmountCents,
         currency: 'USD',
-        status: 'PENDING',
-      },
+        customerEmail: user?.email || 'owner@rota.app',
+        customerName: 'Rota Owner',
+        redirectUrl: `${apiBase}/api/payment/callback`,
+        title: isMidPeriodUpgrade ? `Rota Subscription Upgrade` : `Rota ${plan.code} Subscription`,
+        description: isMidPeriodUpgrade
+          ? `Mid-period upgrade to ${plan.code} (${desiredSeats} seats) - $${(chargeAmountCents / 100).toFixed(2)}`
+          : `${plan.code} Plan (${desiredSeats} seats) - $${(chargeAmountCents / 100).toFixed(2)}/mo`,
+        meta: {
+          teamId,
+          subscriptionId: subscription.id,
+          planCode,
+          targetSeats: String(desiredSeats),
+          isMidPeriodUpgrade: String(isMidPeriodUpgrade),
+        },
+      });
+      checkoutUrl = flwInit.checkoutUrl;
+    } catch (err: unknown) {
+      logger.error('Flutterwave payment initialization failed', err);
+      res.status(502).json({ error: 'Payment gateway initiation failed' });
+      return;
+    }
+
+    const attempt = await prismaPrimary.$transaction(async (tx) => {
+      const createdAttempt = await tx.paymentAttempt.create({
+        data: {
+          teamId,
+          subscriptionId: subscription.id,
+          idempotencyKey,
+          txRef,
+          provider: 'FLUTTERWAVE_TEST',
+          expectedAmountCents: chargeAmountCents,
+          currency: 'USD',
+          status: 'PENDING',
+        },
+      });
+
+      // Stage 1 PaymentLog: USER_INITIATED
+      await tx.paymentLog.create({
+        data: {
+          teamId,
+          paymentAttemptId: createdAttempt.id,
+          stage: 'USER_INITIATED',
+          attemptCreatedAt: createdAttempt.createdAt,
+          eventType: 'USER_INITIATED',
+          message: isMidPeriodUpgrade
+            ? `Owner initiated prorated upgrade to ${plan.code} (${desiredSeats} seats, $${(chargeAmountCents / 100).toFixed(2)})`
+            : `Owner initiated payment for ${plan.code} plan (${desiredSeats} seats, $${(chargeAmountCents / 100).toFixed(2)})`,
+          metadata: {
+            planCode,
+            targetSeats: desiredSeats,
+            amountCents: chargeAmountCents,
+            isMidPeriodUpgrade,
+            txRef,
+            checkoutUrl,
+            ...quoteMetadata,
+          },
+        },
+      });
+
+      return createdAttempt;
     });
 
     logger.info('Payment attempt initiated', {
       teamId,
       attemptId: attempt.id,
       planCode,
-      amountCents: plan.basePriceCents,
+      amountCents: chargeAmountCents,
+      isMidPeriodUpgrade,
     });
 
     res.status(201).json({
@@ -315,6 +684,7 @@ teamsRouter.post(
       amountCents: attempt.expectedAmountCents,
       currency: attempt.currency,
       status: attempt.status,
+      checkoutUrl,
     });
   }
 );
@@ -337,87 +707,95 @@ teamsRouter.post(
 
     const { paymentAttemptId } = parseResult.data;
 
-    const result = await prismaPrimary.$transaction(async (tx) => {
-      const attempt = await tx.paymentAttempt.findUnique({
-        where: { id: paymentAttemptId },
-        include: { subscription: true },
-      });
-
-      if (!attempt || attempt.teamId !== teamId) {
-        throw new Error('Payment attempt not found');
-      }
-
-      if (attempt.status === 'VERIFIED') {
-        return { attempt, subscription: attempt.subscription, alreadyVerified: true };
-      }
-
-      const subscription = attempt.subscription;
-      // Determine the plan based on the attempt amount
-      const plan = await tx.plan.findFirst({
-        where: { basePriceCents: attempt.expectedAmountCents },
-      });
-      const resolvedPlanCode = plan?.code || 'STARTER';
-      const includedSeats = plan?.includedSeats || 5;
-
-      const now = new Date();
-      const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-      // 1. Mark attempt as VERIFIED
-      const updatedAttempt = await tx.paymentAttempt.update({
-        where: { id: attempt.id },
-        data: {
-          status: 'VERIFIED',
-          providerTransaction: `flw_mock_${attempt.txRef}`,
-        },
-      });
-
-      // 2. Append-only ledger row (PRD rule: never update or delete ledger rows)
-      await tx.ledgerEntry.create({
-        data: {
-          teamId,
-          subscriptionId: subscription.id,
-          paymentAttemptId: attempt.id,
-          kind: 'CHARGE',
-          eventType: subscription.status === 'PENDING_INITIAL_PAYMENT' ? 'INITIAL_PAYMENT' : 'PLAN_CHANGE',
-          amountCents: attempt.expectedAmountCents,
-          currency: 'USD',
-          planCodeAfter: resolvedPlanCode,
-          paidSeatsAfter: includedSeats,
-          statusAfter: 'ACTIVE',
-          periodStartAfter: now,
-          periodEndAfter: periodEnd,
-          effectiveAt: now,
-        },
-      });
-
-      // 3. Atomically activate subscription
-      const updatedSubscription = await tx.subscription.update({
-        where: { id: subscription.id },
-        data: {
-          status: 'ACTIVE',
-          planCode: resolvedPlanCode,
-          paidSeatEntitlement: includedSeats,
-          periodStart: now,
-          periodEnd,
-        },
-      });
-
-      return { attempt: updatedAttempt, subscription: updatedSubscription, alreadyVerified: false };
+    const result = await verifyAndSettlePaymentAttempt({
+      paymentAttemptId,
+      source: 'SYNC',
     });
 
-    logger.info('Payment verified and subscription activated', {
-      teamId,
-      attemptId: paymentAttemptId,
-      status: result.subscription.status,
-      planCode: result.subscription.planCode,
-    });
+    if (!result.success && result.status !== 'ALREADY_VERIFIED') {
+      res.status(400).json({ error: result.message || 'Payment verification failed' });
+      return;
+    }
+
+    const subscription = result.subscription as {
+      status?: string;
+      planCode?: string;
+      paidSeatEntitlement?: number;
+    } | undefined;
 
     res.status(200).json({
       success: true,
-      status: result.subscription.status,
-      planCode: result.subscription.planCode,
-      paidSeatEntitlement: result.subscription.paidSeatEntitlement,
+      status: subscription?.status || 'ACTIVE',
+      planCode: subscription?.planCode,
+      paidSeatEntitlement: subscription?.paidSeatEntitlement,
     });
+  }
+);
+
+/**
+ * POST /api/teams/:teamId/payment/sync - Checks and syncs payment status with Flutterwave
+ * Triggered by mobile PaymentPendingScreen or user "Check payment status" button.
+ */
+teamsRouter.post(
+  '/teams/:teamId/payment/sync',
+  authenticate,
+  requireTeamMembership([Role.OWNER]),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const teamId = req.params.teamId;
+    const { paymentAttemptId } = req.body || {};
+
+    const attempt = await prismaPrimary.paymentAttempt.findFirst({
+      where: {
+        teamId,
+        ...(paymentAttemptId ? { id: paymentAttemptId } : { status: 'PENDING' }),
+      },
+      orderBy: { createdAt: 'desc' },
+      include: { subscription: true },
+    });
+
+    if (!attempt) {
+      const sub = await prismaPrimary.subscription.findUnique({ where: { teamId } });
+      res.status(200).json({
+        success: sub?.status === 'ACTIVE',
+        status: sub?.status === 'ACTIVE' ? 'VERIFIED' : 'NO_PENDING_ATTEMPT',
+        subscription: sub,
+      });
+      return;
+    }
+
+    const result = await verifyAndSettlePaymentAttempt({
+      paymentAttemptId: attempt.id,
+      txRef: attempt.txRef,
+      source: 'SYNC',
+    });
+
+    res.status(200).json({
+      success: result.success,
+      status: result.status,
+      message: result.message,
+      subscription: result.subscription,
+    });
+  }
+);
+
+/**
+ * GET /api/teams/:teamId/payment-logs - Retrieve payment lifecycle audit logs (Owner only)
+ */
+teamsRouter.get(
+  '/teams/:teamId/payment-logs',
+  authenticate,
+  requireTeamMembership([Role.OWNER]),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const teamId = req.params.teamId;
+    const logs = await prismaPrimary.paymentLog.findMany({
+      where: { teamId },
+      orderBy: [
+        { attemptCreatedAt: 'desc' },
+        { createdAt: 'asc' },
+      ],
+      take: 50,
+    });
+    res.status(200).json({ logs });
   }
 );
 
@@ -494,6 +872,7 @@ teamsRouter.post(
   '/teams/:teamId/invitations',
   authenticate,
   requireTeamMembership([Role.OWNER]),
+  invitationsRateLimiter,
   async (req: AuthenticatedRequest, res: Response) => {
     const teamId = req.params.teamId;
     const parseResult = CreateInvitationInputSchema.safeParse(req.body);
@@ -561,7 +940,7 @@ teamsRouter.post(
         return { invitation: created, teamName: team.name, rawToken };
       });
 
-      const apiBaseUrl = process.env.API_BASE_URL || 'http://192.168.0.165:3000';
+      const apiBaseUrl = serverConfig.apiBaseUrl;
       const inviteUrl = `${apiBaseUrl}/invite/${rawToken}`;
 
       // Dispatch invitation email if recipient email is provided
@@ -674,8 +1053,17 @@ teamsRouter.delete(
         where: { userId: membership.userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+
+      // 3. Immediately invalidate and clear push tokens for removed member (AGENTS.md rule 6 / PRD F6.5)
+      await tx.device.updateMany({
+        where: { userId: membership.userId, invalidatedAt: null },
+        data: { invalidatedAt: new Date(), pushToken: null },
+      });
     });
 
-    res.status(200).json({ message: 'Member removed and sessions revoked' });
+    await invalidateCache(`cache:user:${membership.userId}:me`);
+    await invalidateCache(`cache:team:${teamId}:members`);
+
+    res.status(200).json({ message: 'Member removed, sessions revoked, and push tokens cleared' });
   }
 );

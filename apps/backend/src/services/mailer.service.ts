@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import nodemailer, { Transporter } from 'nodemailer';
+import { serverConfig, providerConfig } from '../config';
 import { logger } from '../observability/logger';
 
 export interface SendEmailOptions {
@@ -21,8 +22,12 @@ export interface MailerConfig {
   from?: string;
 }
 
-let transporterInstance: Transporter | null = null;
-let currentTransporterType: 'smtp' | 'json' | null = null;
+/** Active transport mode for the current process. */
+type TransportMode = 'brevo' | 'json';
+
+let nodemailerFallback: Transporter | null = null;
+let currentTransportMode: TransportMode | null = null;
+
 export const recordedSentEmails: Array<{
   to: string;
   subject: string;
@@ -32,91 +37,167 @@ export const recordedSentEmails: Array<{
 }> = [];
 
 /**
- * Creates or retrieves the singleton Nodemailer transporter.
- * Supports SMTP configuration via environment variables.
- * Falls back to in-memory JSON/stream transport in test/development environments
- * when no SMTP host is configured, preventing network timeouts and connection errors.
+ * Initialises the email transport.
+ *
+ * Production / development with `BREVO_API_KEY` → uses Brevo HTTP API
+ * (bypasses SMTP entirely — works with any recipient, no domain verification needed).
+ *
+ * Test environment or missing key → in-memory Nodemailer JSON transport
+import { providerConfig, serverConfig } from '../config';
+
+/**
+ * Ensures the correct mail transport is initialised.
+ * Uses Brevo HTTP API when BREVO_API_KEY is configured.
+ * Defaults to Nodemailer JSON transport in test mode or when no API key is set,
+ * so tests can inspect payloads without real delivery.
  */
-export function getMailerTransporter(): Transporter {
-  const host = process.env.SMTP_HOST;
-  const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
-  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+function ensureTransport(): TransportMode {
+  if (currentTransportMode) return currentTransportMode;
 
-  const isTest = process.env.NODE_ENV === 'test' && process.env.TEST_LIVE_SMTP !== 'true';
-  const hasSmtpConfig = !isTest && !!(host && host.trim().length > 0 && host !== 'localhost');
+  const apiKey = providerConfig.brevoApiKey;
+  const isTest =
+    serverConfig.nodeEnv === 'test' && process.env.TEST_LIVE_EMAIL !== 'true';
 
-  if (transporterInstance) {
-    // If real SMTP is configured and we were using fallback json, refresh to real SMTP
-    if (hasSmtpConfig && currentTransporterType === 'json') {
-      transporterInstance = null;
-    } else {
-      return transporterInstance;
-    }
-  }
-
-  if (hasSmtpConfig) {
-    transporterInstance = nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: user && pass ? { user, pass } : undefined,
-    });
-    currentTransporterType = 'smtp';
-    logger.info('Nodemailer SMTP transporter initialized', { host, port, secure });
+  if (!isTest && apiKey && apiKey.trim().length > 0) {
+    currentTransportMode = 'brevo';
+    logger.info('Email transport: Brevo HTTP API initialised');
   } else {
-    // In-memory JSON transport for tests and local dev without live SMTP credentials
-    transporterInstance = nodemailer.createTransport({
-      jsonTransport: true,
-    });
-    currentTransporterType = 'json';
-    logger.info('Nodemailer initialized in test/fallback JSON transport mode');
+    // In-memory JSON transport for tests and local dev without credentials
+    nodemailerFallback = nodemailer.createTransport({ jsonTransport: true });
+    currentTransportMode = 'json';
+    logger.info('Email transport: Nodemailer JSON (test/fallback) mode');
   }
 
-  return transporterInstance;
+  return currentTransportMode;
 }
 
 /**
- * Resets the transporter instance (useful in testing to switch configs or clear mocks).
+ * Resets the transport (useful in tests to switch configs or clear mocks).
  */
+export function resetMailerTransport(): void {
+  nodemailerFallback = null;
+  currentTransportMode = null;
+}
+
+/** @deprecated Use resetMailerTransport(). Kept for backward compatibility. */
 export function setMailerTransporter(transporter: Transporter | null): void {
-  transporterInstance = transporter;
+  nodemailerFallback = transporter;
+  if (transporter) {
+    currentTransportMode = 'json';
+  } else {
+    resetMailerTransport();
+  }
+}
+
+/** @deprecated Use ensureTransport(). Returns the Nodemailer instance (json fallback only). */
+export function getMailerTransporter(): Transporter {
+  ensureTransport();
+  if (nodemailerFallback) return nodemailerFallback;
+  if (!nodemailerFallback) {
+    nodemailerFallback = nodemailer.createTransport({ jsonTransport: true });
+  }
+  return nodemailerFallback;
 }
 
 /**
- * Sends a generic email using Nodemailer.
+ * Sends a transactional email via the Brevo v3 HTTP API.
  */
-export async function sendEmail(options: SendEmailOptions): Promise<{ success: boolean; messageId?: string }> {
-  const transporter = getMailerTransporter();
-  const defaultFrom = process.env.SMTP_FROM || 'Rota <noreply@rota.app>';
+async function sendViaBrevo(
+  to: string,
+  subject: string,
+  html: string,
+  text: string,
+  senderEmail: string,
+  senderName: string,
+): Promise<string> {
+  const apiKey = providerConfig.brevoApiKey;
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json',
+      'api-key': apiKey,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      sender: { name: senderName, email: senderEmail },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+      textContent: text,
+    }),
+  });
+
+  const body = await response.json() as { messageId?: string; message?: string; code?: string };
+
+  if (!response.ok) {
+    throw new Error(
+      `Brevo API error (${response.status}): ${body.message || JSON.stringify(body)}`,
+    );
+  }
+
+  return body.messageId || 'brevo-ok';
+}
+
+/**
+ * Sends an email via the active transport (Brevo HTTP API or Nodemailer JSON fallback).
+ */
+export async function sendEmail(
+  options: SendEmailOptions,
+): Promise<{ success: boolean; messageId?: string }> {
+  const mode = ensureTransport();
+
+  // Parse "Name <email>" or just use a plain email address
+  const rawFrom = options.from || providerConfig.brevoFrom;
+
+  const fromMatch = rawFrom.match(/^(.+?)\s*<(.+?)>$/);
+  const senderName = fromMatch ? fromMatch[1].trim() : 'Rota';
+  const senderEmail = fromMatch ? fromMatch[2].trim() : rawFrom.trim();
 
   try {
-    const info = await transporter.sendMail({
-      from: options.from || defaultFrom,
-      to: options.to,
-      subject: options.subject,
-      text: options.text || options.html.replace(/<[^>]+>/g, ''),
-      html: options.html,
-    });
+    let messageId: string | undefined;
+
+    if (mode === 'brevo') {
+      const plainText = options.text || options.html.replace(/<[^>]+>/g, '');
+      messageId = await sendViaBrevo(
+        options.to,
+        options.subject,
+        options.html,
+        plainText,
+        senderEmail,
+        senderName,
+      );
+    } else {
+      // JSON fallback (test mode)
+      const info = await nodemailerFallback!.sendMail({
+        from: rawFrom,
+        to: options.to,
+        subject: options.subject,
+        text: options.text || options.html.replace(/<[^>]+>/g, ''),
+        html: options.html,
+      });
+      messageId = info.messageId;
+    }
 
     recordedSentEmails.push({
       to: options.to,
       subject: options.subject,
       html: options.html,
       text: options.text,
-      messageId: info.messageId,
+      messageId,
     });
 
-    logger.info('Email sent successfully via Nodemailer', {
+    logger.info('Email sent successfully', {
+      transport: mode,
       to: options.to,
       subject: options.subject,
-      messageId: info.messageId,
+      messageId,
     });
 
-    return { success: true, messageId: info.messageId };
+    return { success: true, messageId };
   } catch (error) {
-    logger.error('Failed to send email via Nodemailer', error, {
+    logger.error('Failed to send email', error, {
+      transport: mode,
       to: options.to,
       subject: options.subject,
     });

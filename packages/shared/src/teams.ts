@@ -40,9 +40,23 @@ export interface TeamOverviewResponse {
 
 export const InitiatePaymentInputSchema = z.object({
   planCode: z.enum(['STARTER', 'TEAM', 'BUSINESS']),
+  targetSeats: z.number().int().positive().optional(),
   idempotencyKey: z.string().trim().min(1, 'Idempotency key is required'),
 });
 export type InitiatePaymentInput = z.infer<typeof InitiatePaymentInputSchema>;
+
+export const QuotePlanInputSchema = z.object({
+  targetPlanCode: z.enum(['STARTER', 'TEAM', 'BUSINESS']),
+  targetSeats: z.number().int().positive().optional(),
+  effectiveDate: z.string().optional(),
+});
+export type QuotePlanInput = z.infer<typeof QuotePlanInputSchema>;
+
+export const QuoteSeatsInputSchema = z.object({
+  targetSeats: z.number().int().positive(),
+  effectiveDate: z.string().optional(),
+});
+export type QuoteSeatsInput = z.infer<typeof QuoteSeatsInputSchema>;
 
 export const VerifyPaymentInputSchema = z.object({
   paymentAttemptId: z.string().uuid('Valid payment attempt ID required'),
@@ -75,6 +89,7 @@ export interface BillingOverviewResponse {
     periodEnd: string;
     nextRenewalAmountCents: number;
     graceEndAt: string | null;
+    pendingPlanCode?: string | null;
   };
 }
 

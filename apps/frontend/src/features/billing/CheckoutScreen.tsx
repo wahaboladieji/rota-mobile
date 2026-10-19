@@ -6,15 +6,18 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { useTheme, titleLargeText, titleMediumText } from '../../theme';
 import { PlanCode } from '@rota/shared';
 import { apiRequest } from '../../services/api';
+import { useRateLimitCountdown } from '../../services/useRateLimitCountdown';
 import { ArrowLeftIcon, CreditCardIcon } from '../../components/ReviewIcons';
 
 interface CheckoutScreenProps {
   teamId: string;
   plan: PlanCode;
+  targetSeats?: number;
   onPaymentSuccess: (paymentAttemptId: string) => void;
   onPaymentPending: (paymentAttemptId: string) => void;
   onBack: () => void;
@@ -23,6 +26,7 @@ interface CheckoutScreenProps {
 export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
   teamId,
   plan,
+  targetSeats,
   onPaymentSuccess,
   onPaymentPending,
   onBack,
@@ -30,6 +34,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
   const { colors } = useTheme();
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const rateLimit = useRateLimitCountdown('Too many payment attempts initiated for this team. Please try again in');
 
   const handleSimulatePayment = async () => {
     setLoading(true);
@@ -45,38 +50,32 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
         amountCents: number;
         currency: string;
         status: string;
+        checkoutUrl?: string;
       }>(`/api/teams/${teamId}/payment/initiate`, {
         method: 'POST',
         requiresAuth: true,
         body: JSON.stringify({
           planCode: plan,
+          ...(targetSeats ? { targetSeats } : {}),
           idempotencyKey,
         }),
       });
 
-      // 2. Perform test provider verification (E1 spike simulation)
-      const verifyIdempotencyKey = `pay_verify_${initResponse.paymentAttemptId}_${Date.now()}`;
-      const verifyResponse = await apiRequest<{
-        success: boolean;
-        status: string;
-        planCode: string;
-        paidSeatEntitlement: number;
-      }>(`/api/teams/${teamId}/payment/verify`, {
-        method: 'POST',
-        requiresAuth: true,
-        body: JSON.stringify({
-          paymentAttemptId: initResponse.paymentAttemptId,
-          idempotencyKey: verifyIdempotencyKey,
-        }),
-      });
-
-      if (verifyResponse.status === 'ACTIVE') {
-        onPaymentSuccess(initResponse.paymentAttemptId);
-      } else {
-        onPaymentPending(initResponse.paymentAttemptId);
+      // 2. Open Flutterwave hosted payment link in browser if provided
+      if (initResponse.checkoutUrl) {
+        try {
+          await Linking.openURL(initResponse.checkoutUrl);
+        } catch (linkErr) {
+          console.warn('Could not open external browser link', linkErr);
+        }
       }
+
+      // 3. Transition to PaymentPendingScreen (as per AGENTS.md rule 3: never activate directly from client)
+      onPaymentPending(initResponse.paymentAttemptId);
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Checkout initiation failed');
+      if (!rateLimit.handleApiError(err)) {
+        setErrorMessage(err instanceof Error ? err.message : 'Checkout initiation failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -139,7 +138,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
           </Text>
         </View>
 
-        {errorMessage ? (
+        {rateLimit.isRateLimited || errorMessage ? (
           <View
             style={[
               styles.errorBox,
@@ -150,7 +149,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             ]}
           >
             <Text style={[styles.errorText, { color: colors.onErrorContainer }]}>
-              {errorMessage}
+              {rateLimit.isRateLimited ? rateLimit.formattedMessage : errorMessage}
             </Text>
           </View>
         ) : null}
@@ -161,17 +160,19 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             style={[
               styles.primaryButton,
               { backgroundColor: colors.primary },
-              loading && { opacity: 0.7 },
+              (loading || rateLimit.isRateLimited) && { opacity: 0.7 },
             ]}
             onPress={handleSimulatePayment}
-            disabled={loading}
+            disabled={loading || rateLimit.isRateLimited}
             activeOpacity={0.8}
           >
             {loading ? (
               <ActivityIndicator size="small" color={colors.onPrimary} />
             ) : (
               <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
-                Complete test payment
+                {rateLimit.isRateLimited
+                  ? `Try again in ${rateLimit.secondsRemaining}s`
+                  : 'Proceed to Flutterwave Checkout'}
               </Text>
             )}
           </TouchableOpacity>

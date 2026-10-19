@@ -26,6 +26,12 @@ export const rawTokens = {
       error: 'hsl(359, 100%, 38%)',
       onError: 'hsl(0, 0%, 100%)',
       errorContainer: 'hsl(7, 100%, 95%)',
+      // User-approved addition (error 97) for a lighter error container tint.
+      // Light only; the supplied error ramp has no 97 tone yet, so the token
+      // source still needs the matching primitive added.
+      errorContainerHigh: 'hsl(7, 100%, 97%)',
+      // User-approved addition (error 98) for cancellation notice card background.
+      error98: 'hsl(7, 100%, 98%)',
       onErrorContainer: 'hsl(359, 100%, 29%)',
       background: 'hsl(0, 0%, 98%)',
       onBackground: 'hsl(0, 0%, 11%)',
@@ -53,8 +59,8 @@ export const rawTokens = {
     },
     dark: {
       primary: 'hsl(221, 85%, 55%)',
-      onPrimary: 'hsl(219, 100%, 23%)',
-      primary95: 'hsl(221, 85%, 95%)',
+      onPrimary: 'hsl(0, 0%, 100%)',
+      primary95: 'hsl(221, 55%, 20%)',
       primaryContainer: 'hsl(218, 100%, 33%)',
       onPrimaryContainer: 'hsl(230, 100%, 93%)',
       secondary: 'hsl(171, 66%, 58%)',
@@ -65,14 +71,17 @@ export const rawTokens = {
       onTertiary: 'hsl(215, 100%, 21%)',
       tertiaryContainer: 'hsl(220, 60%, 33%)',
       onTertiaryContainer: 'hsl(226, 100%, 93%)',
-      // Unresolved placeholder magenta tokens per design-system-rule.md
-      error: 'hsl(300, 100%, 50%)',
-      onError: 'hsl(300, 100%, 50%)',
-      errorContainer: 'hsl(300, 100%, 50%)',
-      onErrorContainer: 'hsl(300, 100%, 50%)',
-      background: 'hsl(300, 100%, 50%)',
+      // Accessible WCAG 2.1 AA/AAA dark error palette
+      error: 'hsl(358, 100%, 69%)',
+      onError: 'hsl(359, 100%, 15%)',
+      errorContainer: 'hsl(359, 70%, 18%)',
+      errorContainerHigh: 'hsl(359, 65%, 24%)',
+      error98: 'hsl(359, 50%, 13%)',
+      onErrorContainer: 'hsl(7, 100%, 88%)',
+      // Accessible WCAG 2.1 AAA dark neutral slate elevation ramp
+      background: 'hsl(220, 15%, 8%)',
       onBackground: 'hsl(0, 0%, 89%)',
-      surface: 'hsl(300, 100%, 50%)',
+      surface: 'hsl(220, 15%, 10%)',
       onSurface: 'hsl(0, 0%, 89%)',
       surfaceVariant: 'hsl(257, 5%, 29%)',
       onSurfaceVariant: 'hsl(273, 8%, 79%)',
@@ -81,15 +90,14 @@ export const rawTokens = {
       inverseSurface: 'hsl(0, 0%, 89%)',
       inverseOnSurface: 'hsl(0, 0%, 19%)',
       inversePrimary: 'hsl(217, 100%, 43%)',
-      surfaceDim: 'hsl(300, 100%, 50%)',
-      surfaceBright: 'hsl(300, 100%, 50%)',
-      surfaceContainerLowest: 'hsl(300, 100%, 50%)',
-      surfaceContainerLow: 'hsl(0, 0%, 11%)',
-      surfaceContainer: 'hsl(300, 100%, 50%)',
-      surfaceContainerHigh: 'hsl(300, 100%, 50%)',
-      surfaceContainerHighest: 'hsl(300, 100%, 50%)',
-      // Unresolved placeholder magenta: dark neutral-99 has no approved value yet.
-      neutral99: 'hsl(300, 100%, 50%)',
+      surfaceDim: 'hsl(220, 15%, 6%)',
+      surfaceBright: 'hsl(220, 12%, 20%)',
+      surfaceContainerLowest: 'hsl(220, 15%, 6%)',
+      surfaceContainerLow: 'hsl(220, 14%, 11%)',
+      surfaceContainer: 'hsl(220, 13%, 14%)',
+      surfaceContainerHigh: 'hsl(220, 12%, 17%)',
+      surfaceContainerHighest: 'hsl(220, 11%, 20%)',
+      neutral99: 'hsl(220, 13%, 15%)',
     },
   },
 

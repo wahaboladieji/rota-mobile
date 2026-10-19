@@ -24,6 +24,7 @@ export const ArrowRightIcon = createIcon('arrow-right');
 export const ChevronRightIcon = createIcon('chevron-right', 18);
 export const ChevronDownIcon = createIcon('chevron-down', 16);
 export const PlusIcon = createIcon('plus', 18);
+export const MinusIcon = createIcon('minus', 18);
 export const HouseIcon = createIcon('home-outline');
 export const CalendarDaysIcon = createIcon('calendar-month-outline');
 export const Repeat2Icon = createIcon('swap-horizontal');

@@ -4,6 +4,7 @@ import { useTheme } from '../../theme';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { apiRequest } from '../../services/api';
+import { useRateLimitCountdown } from '../../services/useRateLimitCountdown';
 
 interface PasswordResetScreenProps {
   onNavigateToLogin: (email?: string) => void;
@@ -31,6 +32,7 @@ export const PasswordResetScreen: React.FC<PasswordResetScreenProps> = ({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [resendCountdown, setResendCountdown] = useState(60);
+  const rateLimit = useRateLimitCountdown('Too many password reset requests. Please try again in');
 
   useEffect(() => {
     if (initialEmail) {
@@ -137,7 +139,9 @@ export const PasswordResetScreen: React.FC<PasswordResetScreenProps> = ({
       });
       setStage('CONFIRM');
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Reset request failed');
+      if (!rateLimit.handleApiError(err)) {
+        setErrorMessage(err instanceof Error ? err.message : 'Reset request failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -174,7 +178,9 @@ export const PasswordResetScreen: React.FC<PasswordResetScreenProps> = ({
       });
       setStage('SUCCESS');
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Reset failed');
+      if (!rateLimit.handleApiError(err)) {
+        setErrorMessage(err instanceof Error ? err.message : 'Reset failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -291,7 +297,7 @@ export const PasswordResetScreen: React.FC<PasswordResetScreenProps> = ({
         </Text>
       </View>
 
-      {errorMessage ? (
+      {rateLimit.isRateLimited || errorMessage ? (
         <View
           style={[
             styles.banner,
@@ -313,7 +319,7 @@ export const PasswordResetScreen: React.FC<PasswordResetScreenProps> = ({
               letterSpacing: typography.roles.bodySmall.letterSpacing,
             }}
           >
-            {errorMessage}
+            {rateLimit.isRateLimited ? rateLimit.formattedMessage : errorMessage}
           </Text>
         </View>
       ) : null}
@@ -331,9 +337,10 @@ export const PasswordResetScreen: React.FC<PasswordResetScreenProps> = ({
             error={emailError || undefined}
           />
           <Button
-            title="Send Reset Code"
+            title={rateLimit.isRateLimited ? `Try again in ${rateLimit.secondsRemaining}s` : 'Send Reset Code'}
             onPress={handleRequestReset}
             loading={loading}
+            disabled={rateLimit.isRateLimited}
             style={{ marginTop: spacingCollection.space100Base }}
           />
         </>

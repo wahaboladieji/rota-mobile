@@ -8,6 +8,11 @@ export const devicesRouter = Router();
 
 const RegisterPushTokenSchema = z.object({
   pushToken: z.string().min(1, 'Push token cannot be empty'),
+  oldPushToken: z.string().optional(),
+});
+
+const DeletePushTokenSchema = z.object({
+  pushToken: z.string().min(1, 'Push token cannot be empty'),
 });
 
 const TestPushSchema = z.object({
@@ -17,6 +22,7 @@ const TestPushSchema = z.object({
 /**
  * POST /devices/push-token
  * Registers or updates a device push token for the authenticated user.
+ * Supports token rotation: if oldPushToken is provided, it is invalidated.
  */
 devicesRouter.post(
   '/devices/push-token',
@@ -28,10 +34,20 @@ devicesRouter.post(
       return;
     }
 
-    const { pushToken } = parseResult.data;
+    const { pushToken, oldPushToken } = parseResult.data;
     const userId = req.user!.userId;
 
     try {
+      // 1. If rotating from an older token on this device, invalidate the old registration
+      if (oldPushToken && oldPushToken !== pushToken) {
+        await prismaPrimary.device.updateMany({
+          where: { pushToken: oldPushToken, userId },
+          data: { invalidatedAt: new Date() },
+        });
+        logger.info('Rotated push token: invalidated old token', { userId, oldPushToken });
+      }
+
+      // 2. Register or update the new token
       const device = await prismaPrimary.device.upsert({
         where: { pushToken },
         update: {
@@ -54,6 +70,41 @@ devicesRouter.post(
         error: err instanceof Error ? err.message : String(err),
       });
       res.status(500).json({ error: 'Failed to register push token' });
+    }
+  }
+);
+
+/**
+ * DELETE /devices/push-token
+ * Invalidates a device push token (e.g. upon user logout or permission revocation).
+ */
+devicesRouter.delete(
+  '/devices/push-token',
+  authenticate,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const parseResult = DeletePushTokenSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({ error: 'Invalid push token', details: parseResult.error.format() });
+      return;
+    }
+
+    const { pushToken } = parseResult.data;
+    const userId = req.user!.userId;
+
+    try {
+      await prismaPrimary.device.updateMany({
+        where: { pushToken, userId },
+        data: { invalidatedAt: new Date() },
+      });
+
+      logger.info('Device push token invalidated on request', { userId });
+      res.status(200).json({ success: true, message: 'Push token invalidated' });
+    } catch (err: unknown) {
+      logger.error('Failed to invalidate device push token', {
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      res.status(500).json({ error: 'Failed to invalidate push token' });
     }
   }
 );

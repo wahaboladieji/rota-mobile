@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -28,31 +28,38 @@ export const PaymentPendingScreen: React.FC<PaymentPendingScreenProps> = ({
 }) => {
   const { colors } = useTheme();
   const [checking, setChecking] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const handleCheckStatus = async () => {
     setChecking(true);
-    setStatusMessage(null);
     try {
+      // Ask backend to sync and verify status with Flutterwave
       const response = await apiRequest<{
-        teamId: string;
-        subscription: { status: string };
-      }>(`/api/teams/${teamId}/billing`, {
-        method: 'GET',
+        success: boolean;
+        status: string;
+        message?: string;
+        subscription?: { status: string };
+      }>(`/api/teams/${teamId}/payment/sync`, {
+        method: 'POST',
         requiresAuth: true,
+        body: JSON.stringify({
+          paymentAttemptId,
+        }),
       });
 
-      if (response.subscription?.status === 'ACTIVE') {
+      if (response.status === 'VERIFIED' || response.subscription?.status === 'ACTIVE') {
         onVerified();
-      } else {
-        setStatusMessage('Payment status is still pending verification. Please wait a moment.');
       }
     } catch {
-      setStatusMessage('Unable to reach server to check payment status.');
+      // Keep screen clean without alarming error messages while in-flight
     } finally {
       setChecking(false);
     }
   };
+
+  // Automatically check status when user returns / mounts screen
+  useEffect(() => {
+    handleCheckStatus();
+  }, []);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -70,7 +77,7 @@ export const PaymentPendingScreen: React.FC<PaymentPendingScreenProps> = ({
           <ArrowLeftIcon color={colors.onSurface} size={18} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.onSurfaceVariant }]}>
-          Payment awaiting verification
+          Payment verification
         </Text>
         <View style={{ width: 40 }} />
       </View>
@@ -88,26 +95,11 @@ export const PaymentPendingScreen: React.FC<PaymentPendingScreenProps> = ({
           >
             <ClockIcon color={colors.onPrimaryContainer} size={28} />
           </View>
-          <Text style={[styles.emptyTitle, { color: colors.onSurface }]}>Awaiting confirmation</Text>
+          <Text style={[styles.emptyTitle, { color: colors.onSurface }]}>Your payment is being processed</Text>
           <Text style={[styles.emptySubtitle, { color: colors.onSurfaceVariant }]}>
-            Your payment has not been verified yet. Your current access stays unchanged.
+            We're confirming your transaction with Flutterwave. This usually takes just a few seconds.
           </Text>
         </View>
-
-        {statusMessage ? (
-          <View
-            style={[
-              styles.statusBox,
-              {
-                backgroundColor: colors.surfaceContainerLow,
-              },
-            ]}
-          >
-            <Text style={[styles.statusText, { color: colors.onSurfaceVariant }]}>
-              {statusMessage}
-            </Text>
-          </View>
-        ) : null}
 
         {/* Buttons stack */}
         <View style={styles.stack}>

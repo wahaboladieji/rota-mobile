@@ -4,6 +4,7 @@ import { useTheme } from '../../theme';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { apiRequest } from '../../services/api';
+import { useRateLimitCountdown } from '../../services/useRateLimitCountdown';
 import { useAuthStore } from '../../state/authStore';
 import { AuthSessionResponse } from '@rota/shared';
 
@@ -25,6 +26,7 @@ export const MagicLinkScreen: React.FC<MagicLinkScreenProps> = ({ onNavigateToLo
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const rateLimit = useRateLimitCountdown('Too many attempts. Please try again in');
 
   const handleEmailChange = (text: string) => {
     setEmail(text);
@@ -90,7 +92,9 @@ export const MagicLinkScreen: React.FC<MagicLinkScreenProps> = ({ onNavigateToLo
       setInfoMessage('If your email is registered, a single-use sign-in link has been sent.');
       setStage('VERIFY');
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Request failed');
+      if (!rateLimit.handleApiError(err)) {
+        setErrorMessage(err instanceof Error ? err.message : 'Request failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -114,7 +118,9 @@ export const MagicLinkScreen: React.FC<MagicLinkScreenProps> = ({ onNavigateToLo
       });
       await setAuth(data.user, data.accessToken, data.refreshToken);
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Verification failed');
+      if (!rateLimit.handleApiError(err)) {
+        setErrorMessage(err instanceof Error ? err.message : 'Verification failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -167,7 +173,7 @@ export const MagicLinkScreen: React.FC<MagicLinkScreenProps> = ({ onNavigateToLo
         </Text>
       </View>
 
-      {errorMessage ? (
+      {rateLimit.isRateLimited || errorMessage ? (
         <View
           style={[
             styles.banner,
@@ -189,7 +195,7 @@ export const MagicLinkScreen: React.FC<MagicLinkScreenProps> = ({ onNavigateToLo
               letterSpacing: typography.roles.bodySmall.letterSpacing,
             }}
           >
-            {errorMessage}
+            {rateLimit.isRateLimited ? rateLimit.formattedMessage : errorMessage}
           </Text>
         </View>
       ) : null}
@@ -234,9 +240,10 @@ export const MagicLinkScreen: React.FC<MagicLinkScreenProps> = ({ onNavigateToLo
             error={emailError || undefined}
           />
           <Button
-            title="Send Magic Link"
+            title={rateLimit.isRateLimited ? `Try again in ${rateLimit.secondsRemaining}s` : 'Send Magic Link'}
             onPress={handleRequestLink}
             loading={loading}
+            disabled={rateLimit.isRateLimited}
             style={{ marginTop: spacingCollection.space100Base }}
           />
         </>

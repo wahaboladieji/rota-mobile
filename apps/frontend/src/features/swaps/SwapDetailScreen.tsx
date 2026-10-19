@@ -19,13 +19,14 @@ import {
   AlertTriangleIcon,
   CalendarDaysIcon,
 } from '../../components/ReviewIcons';
-import { SwapRequestItem, SwapStatus } from '@rota/shared';
+import { SwapRequestItem, SwapStatus, Role } from '@rota/shared';
 import { apiRequest } from '../../services/api';
 
 interface SwapDetailScreenProps {
   swap: SwapRequestItem;
   teamId: string;
   currentUserId: string;
+  userRole?: Role;
   onBack: () => void;
   onNavigateToSchedule?: () => void;
 }
@@ -34,6 +35,7 @@ export const SwapDetailScreen: React.FC<SwapDetailScreenProps> = ({
   swap,
   teamId,
   currentUserId,
+  userRole,
   onBack,
   onNavigateToSchedule,
 }) => {
@@ -42,9 +44,11 @@ export const SwapDetailScreen: React.FC<SwapDetailScreenProps> = ({
 
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isApprovedSuccess, setIsApprovedSuccess] = useState(false);
 
   const isRequester = swap.requesterId === currentUserId;
   const isColleague = swap.colleagueId === currentUserId;
+  const isManagerOrOwner = userRole === Role.MANAGER || userRole === Role.OWNER;
 
   // Format dates
   const startDate = new Date(swap.requesterShiftStart);
@@ -92,6 +96,29 @@ export const SwapDetailScreen: React.FC<SwapDetailScreenProps> = ({
     },
     onError: (err: any) => {
       setErrorMessage(err.message || 'Could not cancel request.');
+    },
+  });
+
+  // Manager decision mutation (AGENTS.md rule 15 & PRD F3.1)
+  const managerDecisionMutation = useMutation({
+    mutationFn: (decision: 'APPROVE' | 'REJECT') =>
+      apiRequest(`/api/teams/${teamId}/swaps/${swap.id}/manager-decision`, {
+        method: 'POST',
+        body: JSON.stringify({ decision }),
+        requiresAuth: true,
+      }),
+    onSuccess: async (_, decision) => {
+      await queryClient.invalidateQueries({ queryKey: ['swaps'] });
+      await queryClient.invalidateQueries({ queryKey: ['shifts'] });
+      await queryClient.invalidateQueries({ queryKey: ['activity'] });
+      if (decision === 'APPROVE') {
+        setIsApprovedSuccess(true);
+      } else {
+        onBack();
+      }
+    },
+    onError: (err: any) => {
+      setErrorMessage(err.message || 'Action failed. Please try again.');
     },
   });
 
@@ -258,8 +285,187 @@ export const SwapDetailScreen: React.FC<SwapDetailScreenProps> = ({
               Your current assignment has not changed.
             </Text>
           </>
+        ) : isApprovedSuccess || swap.status === 'APPROVED' ? (
+          /* Case 4: Approved */
+          <>
+            <View style={styles.terminalIconBox}>
+              <CheckIcon color={colors.primary} size={40} />
+            </View>
+            <Text style={[styles.heading, { color: colors.onSurface, textAlign: 'center' }]}>
+              Request approved
+            </Text>
+            <Text style={[styles.subheading, { color: colors.onSurfaceVariant, textAlign: 'center' }]}>
+              The Manager approved this request. Open the schedule to see your current assignment.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, { backgroundColor: colors.primary, marginTop: 16 }]}
+              onPress={onNavigateToSchedule || onBack}
+            >
+              <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
+                View schedule
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : (swap.status === 'PENDING_MANAGER' && isManagerOrOwner && !isRequester) ? (
+          /* Case 3A: Manager reviewing colleague-accepted request (swap-manager from design review) */
+          <>
+            <Text style={[styles.heading, { color: colors.onSurface }]}>Review request.</Text>
+            <Text style={[styles.subheading, { color: colors.onSurfaceVariant }]}>
+              {swap.colleagueName} accepted {swap.requesterName}’s proposal.
+            </Text>
+
+            <View
+              style={[
+                styles.card,
+                {
+                  backgroundColor: colors.surfaceContainerLowest,
+                  borderColor: colors.outlineVariant,
+                },
+              ]}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+                <View
+                  style={[
+                    styles.dotCircle,
+                    { backgroundColor: colors.primaryContainer, width: 36, height: 36, borderRadius: 18 },
+                  ]}
+                >
+                  <Text style={{ color: colors.onPrimaryContainer, fontSize: 13, fontWeight: '700' }}>
+                    {swap.requesterName.substring(0, 2).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={{ marginLeft: 12 }}>
+                  <Text style={[styles.cardTitle, { color: colors.onSurface, fontSize: 16 }]}>
+                    {swap.requesterName} → {swap.colleagueName}
+                  </Text>
+                  <Text style={[styles.cardSub, { color: colors.onSurfaceVariant, marginBottom: 0 }]}>
+                    Colleague accepted
+                  </Text>
+                </View>
+              </View>
+
+              <View style={[styles.kvRow, { borderBottomColor: colors.surfaceContainerLow }]}>
+                <Text style={[styles.kvLabel, { color: colors.onSurfaceVariant }]}>Involved shift</Text>
+                <Text style={[styles.kvValue, { color: colors.onSurface }]}>{dateFormatted}</Text>
+              </View>
+              <View style={[styles.kvRow, { borderBottomWidth: 0 }]}>
+                <Text style={[styles.kvLabel, { color: colors.onSurfaceVariant }]}>Time</Text>
+                <Text style={[styles.kvValue, { color: colors.onSurface }]}>{timeFormatted}</Text>
+              </View>
+
+              {/* Stages */}
+              <View style={styles.stagesContainer}>
+                <View style={styles.stageItem}>
+                  <View style={[styles.dotCircle, { backgroundColor: colors.primary }]}>
+                    <CheckIcon color={colors.onPrimary} size={12} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={[styles.stageHeading, { color: colors.onSurface }]}>
+                      Colleague decision
+                    </Text>
+                    <Text style={[styles.stageSub, { color: colors.onSurfaceVariant }]}>
+                      Accepted by {swap.colleagueName}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.stageItem}>
+                  <View style={[styles.dotCircle, { borderColor: colors.primary, borderWidth: 2 }]}>
+                    <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>2</Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={[styles.stageHeading, { color: colors.onSurface }]}>
+                      Manager decision
+                    </Text>
+                    <Text style={[styles.stageSub, { color: colors.onSurfaceVariant }]}>
+                      Required after colleague acceptance
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <Text style={[styles.footnote, { color: colors.onSurfaceVariant }]}>
+              Current shifts and assignments are checked again at approval.
+            </Text>
+          </>
+        ) : (swap.status === 'PENDING_MANAGER' && isManagerOrOwner && isRequester) ? (
+          /* Case 3B: Working Manager viewing own swap (no self-approval per D2 & PRD Rule 15) */
+          <>
+            <Text style={[styles.heading, { color: colors.onSurface }]}>Colleague accepted.</Text>
+            <Text style={[styles.subheading, { color: colors.onSurfaceVariant }]}>
+              Your request is now with another Manager.
+            </Text>
+
+            <View
+              style={[
+                styles.noticeBox,
+                { backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant, marginBottom: 16 },
+              ]}
+            >
+              <InfoIcon color={colors.primary} size={18} />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={[styles.noticeTitle, { color: colors.onSurface }]}>Self-approval is prohibited</Text>
+                <Text style={[styles.noticeBody, { color: colors.onSurfaceVariant }]}>
+                  To preserve independent review, another authorized Manager or Owner must review and approve this swap.
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={[
+                styles.card,
+                {
+                  backgroundColor: colors.surfaceContainerLowest,
+                  borderColor: colors.outlineVariant,
+                },
+              ]}
+            >
+              <Text style={[styles.cardTitle, { color: colors.onSurface }]}>{dateFormatted}</Text>
+              <Text style={[styles.timeLarge, { color: colors.onSurface }]}>{timeFormatted}</Text>
+              <Text style={[styles.cardSub, { color: colors.onSurfaceVariant }]}>
+                {swap.requesterName} → {swap.colleagueName}
+              </Text>
+
+              {/* Stages */}
+              <View style={styles.stagesContainer}>
+                <View style={styles.stageItem}>
+                  <View style={[styles.dotCircle, { backgroundColor: colors.primary }]}>
+                    <CheckIcon color={colors.onPrimary} size={12} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={[styles.stageHeading, { color: colors.onSurface }]}>
+                      Colleague decision
+                    </Text>
+                    <Text style={[styles.stageSub, { color: colors.onSurfaceVariant }]}>
+                      Accepted by {swap.colleagueName}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.stageItem}>
+                  <View style={[styles.dotCircle, { borderColor: colors.primary, borderWidth: 2 }]}>
+                    <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>2</Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={[styles.stageHeading, { color: colors.onSurface }]}>
+                      Manager decision
+                    </Text>
+                    <Text style={[styles.stageSub, { color: colors.onSurfaceVariant }]}>
+                      In review with another Manager
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <Text style={[styles.footnote, { color: colors.onSurfaceVariant }]}>
+              The schedule stays unchanged until approval.
+            </Text>
+          </>
         ) : swap.status === 'PENDING_MANAGER' ? (
-          /* Case 3: Colleague accepted, awaiting Manager */
+          /* Case 3C: Colleague accepted, awaiting Manager */
           <>
             <Text style={[styles.heading, { color: colors.onSurface }]}>Colleague accepted.</Text>
             <Text style={[styles.subheading, { color: colors.onSurfaceVariant }]}>
@@ -316,28 +522,6 @@ export const SwapDetailScreen: React.FC<SwapDetailScreenProps> = ({
             <Text style={[styles.footnote, { color: colors.onSurfaceVariant }]}>
               The schedule stays unchanged until approval.
             </Text>
-          </>
-        ) : swap.status === 'APPROVED' ? (
-          /* Case 4: Approved */
-          <>
-            <View style={styles.terminalIconBox}>
-              <CheckIcon color={colors.primary} size={40} />
-            </View>
-            <Text style={[styles.heading, { color: colors.onSurface, textAlign: 'center' }]}>
-              Request approved
-            </Text>
-            <Text style={[styles.subheading, { color: colors.onSurfaceVariant, textAlign: 'center' }]}>
-              The Manager approved this request. Open the schedule to see your current assignment.
-            </Text>
-
-            <TouchableOpacity
-              style={[styles.primaryButton, { backgroundColor: colors.primary, marginTop: 16 }]}
-              onPress={onNavigateToSchedule || onBack}
-            >
-              <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
-                View schedule
-              </Text>
-            </TouchableOpacity>
           </>
         ) : swap.status === 'REJECTED' ? (
           /* Case 5: Rejected */
@@ -425,6 +609,48 @@ export const SwapDetailScreen: React.FC<SwapDetailScreenProps> = ({
             ]}
             onPress={() => colleagueDecisionMutation.mutate('REJECT')}
             disabled={colleagueDecisionMutation.isPending}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.secondaryButtonText, { color: colors.onSurface }]}>
+              Reject request
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Manager Decision Footer (swap-manager from design review) */}
+      {swap.status === 'PENDING_MANAGER' && isManagerOrOwner && !isRequester && !isApprovedSuccess && (
+        <View
+          style={[
+            styles.footer,
+            {
+              backgroundColor: colors.background,
+              borderTopColor: colors.surfaceContainerLow,
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={[styles.primaryButton, { backgroundColor: colors.primary, marginBottom: 12 }]}
+            onPress={() => managerDecisionMutation.mutate('APPROVE')}
+            disabled={managerDecisionMutation.isPending}
+            activeOpacity={0.8}
+          >
+            {managerDecisionMutation.isPending ? (
+              <ActivityIndicator size="small" color={colors.onPrimary} />
+            ) : (
+              <Text style={[styles.primaryButtonText, { color: colors.onPrimary }]}>
+                Approve request
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.secondaryButton,
+              { backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant },
+            ]}
+            onPress={() => managerDecisionMutation.mutate('REJECT')}
+            disabled={managerDecisionMutation.isPending}
             activeOpacity={0.7}
           >
             <Text style={[styles.secondaryButtonText, { color: colors.onSurface }]}>

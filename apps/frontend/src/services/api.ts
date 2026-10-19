@@ -1,6 +1,20 @@
 import { useAuthStore } from '../state/authStore';
+import { UserSettingsResponse, UserSettingsPatchInput } from '@rota/shared';
+import { appConfig } from '../config';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE_URL = appConfig.apiUrl;
+
+export class ApiError extends Error {
+  status: number;
+  retryAfterSeconds?: number;
+
+  constructor(message: string, status: number, retryAfterSeconds?: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
 
 interface RequestOptions extends RequestInit {
   requiresAuth?: boolean;
@@ -92,15 +106,34 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error((data as { error?: string }).error || `Request failed with status ${response.status}`);
+    const errorData = data as { error?: string; retryAfterSeconds?: number };
+    let retryAfter = errorData.retryAfterSeconds;
+    if (!retryAfter && response.headers.get('Retry-After')) {
+      const parsed = parseInt(response.headers.get('Retry-After')!, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        retryAfter = parsed;
+      }
+    }
+    const message = errorData.error || `Request failed with status ${response.status}`;
+    throw new ApiError(message, response.status, retryAfter);
   }
 
   return data as T;
 }
 
-export async function registerPushTokenApi(pushToken: string): Promise<{ success: boolean }> {
-  return apiRequest<{ success: boolean }>('/devices/push-token', {
+export async function registerPushTokenApi(
+  pushToken: string,
+  oldPushToken?: string
+): Promise<{ success: boolean; deviceId: string }> {
+  return apiRequest<{ success: boolean; deviceId: string }>('/devices/push-token', {
     method: 'POST',
+    body: JSON.stringify({ pushToken, oldPushToken }),
+  });
+}
+
+export async function deletePushTokenApi(pushToken: string): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>('/devices/push-token', {
+    method: 'DELETE',
     body: JSON.stringify({ pushToken }),
   });
 }
@@ -111,3 +144,24 @@ export async function sendTestNotificationApi(pushToken?: string): Promise<{ suc
     body: JSON.stringify({ pushToken }),
   });
 }
+
+export async function getSettingsApi(): Promise<UserSettingsResponse> {
+  return apiRequest<UserSettingsResponse>('/api/settings', {
+    method: 'GET',
+  });
+}
+
+export async function updateSettingsApi(patch: UserSettingsPatchInput): Promise<UserSettingsResponse> {
+  return apiRequest<UserSettingsResponse>('/api/settings', {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function logoutApi(pushToken?: string): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>('/api/auth/logout', {
+    method: 'POST',
+    body: JSON.stringify({ pushToken }),
+  });
+}
+

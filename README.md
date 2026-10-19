@@ -36,6 +36,10 @@ This repository implements the working scaffold for **Phase 1 Foundation** follo
     SECURITY.md                     # 8 app-specific threats and mitigations
     design-tokens-documentation.md  # Token documentation
     decisions/                      # Records for D1–D6, E1
+    billing/                        # Requirement 5: Payments, proration, and verification
+      proration.md                  # Formulas, prices, integer math, and benchmark cases
+      proration-unit-tests.md       # Unit test runner, adapter mapping, and test execution results
+      payments-verification.md      # Flutterwave integration, webhook security, ledger, and grace rules
   packages/
     shared/                         # Shared contracts, enums, pricing, Zod schemas
   apps/
@@ -65,19 +69,23 @@ This repository implements the working scaffold for **Phase 1 Foundation** follo
 
 ---
 
-## 3. Environment Variables & Public Disclosure
+## 3. Centralized Configuration & Environment Variables
 
-### Public Frontend Variables (`apps/frontend/.env`)
-- `EXPO_PUBLIC_API_URL`: Base URL of the Rota backend API (e.g. `http://localhost:3000` or local IP `http://10.0.2.2:3000` for Android emulator).
-- **Disclosure Assessment**: Safe for public exposure in the mobile bundle. Contains no keys, secrets, or internal server tokens.
+All changeable operational, security, scheduling, rate-limiting, and data-retention values are managed through centralized, strictly typed configuration modules ([apps/backend/src/config/index.ts](file:///Users/admin/Desktop/rota%20mobile/apps/backend/src/config/index.ts) and [apps/frontend/src/config/index.ts](file:///Users/admin/Desktop/rota%20mobile/apps/frontend/src/config/index.ts)) backed by environment variables with sensible defaults.
 
-### Server Secrets (`apps/backend/.env`)
-- `DATABASE_URL`: PostgreSQL connection string with pooling parameters.
-- `DATABASE_REPLICA_URL`: Streaming replica connection string for lag-tested replica reads.
-- `REDIS_URL`: Redis connection URL (`redis://localhost:6379`).
-- `JWT_ACCESS_SECRET`: Secret key for signing 15-minute access JWTs (kept on server).
-- `JWT_REFRESH_SECRET`: Secret key for rotating refresh token hashing (kept on server).
-- `PORT`: HTTP port for Express (default: `3000`).
+### Public Frontend Variables (`apps/frontend/.env` via `apps/frontend/src/config/index.ts`)
+- `EXPO_PUBLIC_API_URL`: Base URL of the Rota backend API (e.g. `http://localhost:3000` or local network IP `http://192.168.0.165:3000`).
+- `EXPO_PUBLIC_SENTRY_DSN`: Public Sentry DSN for mobile crash logging (empty in dev, configured in production).
+- **Disclosure Assessment**: Safe for public exposure in the mobile bundle. Contains zero keys, secrets, or privileged credentials.
+
+### Server Configuration (`apps/backend/.env` via `apps/backend/src/config/index.ts`)
+- **Server & Networking**: `PORT`, `NODE_ENV`, `API_BASE_URL`, `APP_BASE_URL`, `DATABASE_URL`, `DATABASE_REPLICA_URL`, `DB_MAX_LAG_TOLERANCE_MS`, `REDIS_URL`, `SENTRY_DSN`.
+- **Auth & Tokens**: `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRES_IN_SECONDS` (900s / 15m), `JWT_REFRESH_EXPIRES_IN_SECONDS` (30d), `MAGIC_LINK_EXPIRES_IN_SECONDS` (15m), `PASSWORD_RESET_EXPIRES_IN_SECONDS` (1h), `INVITATION_EXPIRES_IN_SECONDS` (7d), `VERIFICATION_CODE_EXPIRES_IN_SECONDS` (5m), `BCRYPT_ROUNDS` (12).
+- **Rate Limits**: `RL_LOGIN_MAX` / `RL_LOGIN_WINDOW`, `RL_RESET_MAX` / `RL_RESET_WINDOW`, `RL_INVITE_MAX` / `RL_INVITE_WINDOW`, `RL_PAY_MAX` / `RL_PAY_WINDOW`, `RL_GENERAL_MAX` / `RL_GENERAL_WINDOW`.
+- **Retention Schedule** (AGENTS.md Rule 20): `RETENTION_ACTIVITY_EVENTS_DAYS` (365d), `RETENTION_LOGS_DAYS` (30d), `RETENTION_FAILED_JOBS_DAYS` (30d), `RETENTION_RAW_WEBHOOKS_DAYS` (90d). Permanent records: ledger entries and webhook IDs.
+- **Scheduling & Billing**: `SHIFT_MAX_HORIZON_WEEKS` (8w), `OFFLINE_SNAPSHOT_DAYS` (14d), `URGENT_SHIFT_THRESHOLD_HOURS` (12h), `SUBSCRIPTION_GRACE_PERIOD_DAYS` (7d), `BASELINE_BILLING_PERIOD_DAYS` (30d).
+- **User Preference Defaults**: `DEFAULT_TIMEZONE` (`Africa/Lagos`), `DEFAULT_QUIET_START` (`22:00`), `DEFAULT_QUIET_END` (`07:00`), `DEFAULT_LANGUAGE` (`en`), `DEFAULT_THEME` (`system`).
+- **External Providers**: `BREVO_API_KEY`, `BREVO_FROM`, `FLUTTERWAVE_PUBLIC_KEY`, `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_ENCRYPTION_KEY`, `FLUTTERWAVE_SECRET_HASH`.
 
 ---
 
@@ -158,10 +166,10 @@ npm test
 
 ## 6. Open Decisions Status
 
-- **D1 (Prepayment Access Policy)**: Open. Scaffold initial subscription created in `PENDING_INITIAL_PAYMENT` without granting premature paid access.
+- **D1 (Prepayment Access Policy)**: **CONFIRMED**. Initial teams remain in `PENDING_INITIAL_PAYMENT` until subscribed. Member invitations and shift publishing are blocked; Owner billing access and shift viewing remain accessible.
 - **D2 (Small-Team Swap Fallback)**: Open. Self-approval is blocked pending product decision.
 - **D3 (Swap Transfer vs Exchange)**: Open. Field `colleagueShiftId` remains optional in Prisma schema.
 - **D4 (Availability Enforcement)**: Open. Unblocked foundation scheduling only.
-- **D5 (Extra-Seat Invite Timing)**: Open. Extra-seat payments blocked pending product decision.
+- **D5 (Extra-Seat Invite Timing)**: **CONFIRMED**. Starter plan has a strict 5-seat cap with no additional seats. Team and Business plans support extra seats ($3/mo and $2/mo per seat). Extra seat entitlement must be purchased prior to sending invitations exceeding included seats.
 - **D6 (Second Language)**: Open. Settings persist default `en`.
-- **E1 (Flutterwave USD Spike)**: Unresolved. Checkout integration blocked until spike verification.
+- **E1 (Flutterwave USD Spike)**: **RESOLVED**. Live test-mode USD checkout spike completed successfully. Hosted checkout integration verified.
